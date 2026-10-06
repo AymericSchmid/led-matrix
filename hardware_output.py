@@ -29,6 +29,13 @@ class MatrixOutput:
         options.brightness = brightness
         options.gpio_slowdown = gpio_slowdown
 
+        # The controller is launched by systemd as root because the HUB75
+        # driver needs direct GPIO access.  rgbmatrix otherwise drops the
+        # process to its default unprivileged account after initialization;
+        # that account cannot reach the controller's state under /home.
+        # Keep the service identity unchanged for its full lifetime.
+        options.drop_privileges = False
+
         # The library needs root for setup, then can return to the account that
         # invoked sudo. Spotify's token file remains writable by that account.
         sudo_uid = os.environ.get("SUDO_UID")
