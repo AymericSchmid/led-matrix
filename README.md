@@ -40,21 +40,23 @@ The original circle is still available with `python main.py --scene circle`.
 
 The desktop emulator remains the default. Add `--output matrix` on the Pi to send the original 64 × 64 RGB frames directly to the HUB75 display. The hardware backend uses the settings from the previously working Python script: one 64 × 64 panel, `regular` GPIO mapping, PWM LSB 50 ns, and brightness 80. GPIO slowdown defaults to 2; adjust it if the panel shows corrupted pixels.
 
-After pushing this folder to your Git repository, clone it into `~/led_matrix` on the Pi. Git will omit the local Spotify tokens and preview/cache files listed in `.gitignore`. The current `rgbmatrix` Python package needs Python 3.11 or newer. Then install the Python dependencies in a virtual environment:
+After pushing this folder to your Git repository, clone it into `~/led-matrix` on the Pi. Git will omit the local Spotify tokens and preview/cache files listed in `.gitignore`. The current `rgbmatrix` Python package needs Python 3.11 or newer. Then install the Python dependencies in a virtual environment:
 
 ```sh
 sudo apt update
-sudo apt install -y python3-venv python3-dev build-essential git
-cd ~/led_matrix
+sudo apt install -y python3-venv python3-dev python3-pil build-essential git
+cd ~/led-matrix
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m pip install git+https://github.com/hzeller/rpi-rgb-led-matrix.git
 ```
 
+If the `rgbmatrix` build reports `Cannot find the directory "/usr/include/python3.13"`, install the matching headers with `sudo apt install -y python3.13-dev` and repeat the last pip command. If it reports `Imaging.h: No such file or directory`, install `python3-pil`, which provides that Pillow header, and repeat the last pip command. The Python header version must match `.venv/bin/python --version`.
+
 The Pi needs its built-in `snd_bcm2835` sound module disabled for the matrix library's hardware pulse mode. The panel also needs its own 5 V power supply and a ribbon cable to its **IN** connector. After the library's built-in demo works, try:
 
 ```sh
-cd ~/led_matrix
+cd ~/led-matrix
 sudo .venv/bin/python main.py --output matrix --scene circle
 sudo .venv/bin/python main.py --output matrix --scene clock
 sudo .venv/bin/python main.py --output matrix --scene weather --weather-city Fribourg
@@ -67,6 +69,29 @@ Press **Ctrl+C** to clear the panel and stop. The command-line scene options use
 
 The matrix driver initializes with root access under `sudo` and then drops back to the invoking account. That lets Spotify save its token under the project's `.spotify` folder. Keep the project in that account's home directory and launch it with `sudo` from that account.
 
+### Phone controller on your Wi-Fi
+
+The first phone-control version is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, and save GPIO slowdown. Settings persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling and Spotify sign-in from the phone are planned for later milestones.
+
+Install the additional web dependencies in the existing virtual environment:
+
+```sh
+cd ~/led-matrix
+.venv/bin/python -m pip install -r requirements-web.txt
+```
+
+Stop any existing `main.py --output matrix` process, then start the controller:
+
+```sh
+sudo .venv/bin/python web_app.py --hardware --host 0.0.0.0
+```
+
+On a phone connected to the same Wi-Fi, open **http://matrix.local:8000**. If that name does not resolve on your phone, use **http://YOUR_PI_IP:8000** instead. Leave the terminal running while using the controller; **Ctrl+C** stops it and clears the matrix. Do not forward port 8000 on your router: this first version has no sign-in and is intended only for a trusted local network.
+
+To try the phone page on a computer without a matrix, install `requirements-web.txt` and run `python web_app.py`. Then open **http://127.0.0.1:8000**. The page labels this mode “Preview only.”
+
+If your Pi already has a Spotify token, the Spotify scene can use it. Otherwise, you can supply the public Client ID once with `--spotify-client-id YOUR_CLIENT_ID`. The current headless sign-in still needs the SSH tunnel described below; connecting directly from the phone will be a later milestone.
+
 ### Spotify on the headless Pi
 
 The Spotify app still uses `http://127.0.0.1:8888/callback` for sign-in. Because the Pi has no browser, open an SSH session **with port forwarding** from your computer before starting the scene:
@@ -78,7 +103,7 @@ ssh -L 8888:127.0.0.1:8888 matrix@matrix.local
 In that SSH session, start the matrix scene with your Spotify app's public Client ID:
 
 ```sh
-cd ~/led_matrix
+cd ~/led-matrix
 sudo .venv/bin/python main.py --output matrix --scene spotify --spotify-client-id YOUR_CLIENT_ID
 ```
 

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101513">
+  <title>Matrix · control</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #101513;
+      color: #f2f1e8;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 310px; background: radial-gradient(circle at 50% -12%, #334238 0, #171e1a 33%, #101513 72%); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    main { width: min(100%, 720px); margin: auto; padding: 28px 20px max(38px, env(safe-area-inset-bottom)); }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 25px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark { display: grid; grid-template-columns: repeat(3, 5px); grid-template-rows: repeat(3, 5px); gap: 4px; transform: rotate(-8deg); }
+    .mark i { width: 5px; height: 5px; border-radius: 50%; background: #d9efaa; box-shadow: 0 0 9px #cde8997e; }
+    .mark i:nth-child(3n+2) { opacity: .55; }
+    h1 { font-size: 18px; font-weight: 640; letter-spacing: -.04em; margin: 0; }
+    .eyebrow { font-size: 10px; font-weight: 750; letter-spacing: .18em; color: #9cae9f; text-transform: uppercase; }
+    .status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 11px; color: #c8d4c9; background: #26322b; border: 1px solid #3e5041; border-radius: 99px; padding: 8px 10px; }
+    .status i { width: 7px; height: 7px; background: #a9e478; border-radius: 50%; box-shadow: 0 0 8px #a9e478; }
+    .status.offline i { background: #e8a983; box-shadow: none; }
+    .hero { background: linear-gradient(150deg, #263128, #1b241f 52%, #151b18); border: 1px solid #3a493c; border-radius: 30px; padding: 18px; box-shadow: 0 28px 70px #050a0680, inset 0 1px #ffffff13; }
+    .hero-top { display: flex; justify-content: space-between; align-items: center; padding: 2px 5px 15px; }
+    .hero-title { font-size: 13px; font-weight: 630; }
+    .hero-sub { color: #a5b2a6; font-size: 12px; }
+    .panel { width: min(100%, 440px); aspect-ratio: 1; margin: 0 auto; padding: 12px; border-radius: 23px; background: #080d0b; border: 1px solid #526250; box-shadow: 0 0 0 5px #111a15, 0 22px 55px #0204029e, inset 0 0 30px #000; }
+    canvas { display: block; width: 100%; height: 100%; border-radius: 11px; }
+    .caption { min-height: 41px; white-space: pre-line; text-align: center; color: #ccd7cd; font-size: 12px; line-height: 1.45; padding: 17px 5px 0; }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 30px 1px 14px; }
+    h2 { font-size: 17px; letter-spacing: -.035em; font-weight: 650; margin: 0; }
+    .hint { font-size: 11px; color: #8b9f8f; }
+    .scene-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .scene { min-height: 78px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 13px 15px; border-radius: 17px; border: 1px solid #3a453b; background: #1d2520; color: #f1f1e8; text-align: left; transition: background .15s, transform .15s, border-color .15s; }
+    .scene:active { transform: scale(.98); }
+    .scene.selected { border-color: #d8edac; background: #34472f; box-shadow: inset 0 0 0 1px #c8e29f37; }
+    .scene .icon { font-size: 18px; line-height: 1; color: #cce8a7; }
+    .scene .name { font-size: 13px; font-weight: 610; }
+    .settings { padding: 17px; border: 1px solid #354137; background: #1a221d; border-radius: 20px; }
+    .setting + .setting { border-top: 1px solid #354137; margin-top: 18px; padding-top: 18px; }
+    .setting-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+    .setting label { font-size: 13px; font-weight: 600; }
+    output { font-size: 12px; color: #d9efaa; font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; margin: 0; accent-color: #d9efaa; }
+    .setting p { font-size: 11px; color: #9eac9f; line-height: 1.45; margin: 10px 0 0; }
+    .stepper { display: flex; gap: 9px; align-items: center; }
+    .stepper button { width: 38px; height: 34px; border: 1px solid #53644f; background: #2a362b; color: #f2f1e8; border-radius: 10px; font-size: 20px; }
+    .stepper output { width: 25px; text-align: center; }
+    .notice { display: none; margin: 14px 0 0; padding: 12px 14px; border-radius: 13px; font-size: 12px; line-height: 1.4; color: #ffe1ba; background: #503d2b; border: 1px solid #8b6642; }
+    .notice.visible { display: block; }
+    .notice.error { color: #ffcac0; background: #482c2a; border-color: #80504a; }
+    footer { padding: 27px 3px 0; text-align: center; color: #829685; font-size: 11px; line-height: 1.5; }
+    @media (min-width: 620px) { .scene-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } main { padding-top: 34px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><div class="eyebrow">Your display</div><h1>Matrix</h1></div></div>
+      <div id="status" class="status offline"><i></i><span>Connecting</span></div>
+    </header>
+
+    <section class="hero" aria-label="Live matrix preview">
+      <div class="hero-top"><div class="hero-title">Live view</div><div id="mode" class="hero-sub">64 × 64 pixels</div></div>
+      <div class="panel"><canvas id="preview" width="512" height="512" aria-label="Current matrix frame"></canvas></div>
+      <div id="caption" class="caption">Starting the display…</div>
+    </section>
+
+    <div class="section-head"><h2>Choose a scene</h2><span class="hint">Tap to display</span></div>
+    <section id="scenes" class="scene-grid" aria-label="Scenes"></section>
+
+    <div class="section-head"><h2>Display settings</h2></div>
+    <section class="settings">
+      <div class="setting">
+        <div class="setting-header"><label for="brightness">Brightness</label><output id="brightness-value">80%</output></div>
+        <input id="brightness" type="range" min="1" max="100" value="80">
+        <p>Adjusts the LEDs immediately when the matrix is connected.</p>
+      </div>
+      <div class="setting">
+        <div class="setting-header"><label>GPIO slowdown</label><div class="stepper"><button id="slowdown-minus" aria-label="Decrease GPIO slowdown">−</button><output id="slowdown-value">2</output><button id="slowdown-plus" aria-label="Increase GPIO slowdown">+</button></div></div>
+        <p>Use only if the panel flickers or shows corrupted pixels. Restart the controller after changing it.</p>
+      </div>
+    </section>
+    <div id="notice" class="notice" role="status"></div>
+    <footer>Available to devices on the same Wi-Fi as your Raspberry Pi.</footer>
+  </main>
+  <script>
+    const sceneNames = {
+      clock: ["Clock", "◷"], circle: ["Circle", "◯"], spotify: ["Spotify", "♫"],
+      weather: ["Weather glass", "☀"], moon: ["Moon", "☾"],
+      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"]
+    };
+    const $ = id => document.getElementById(id);
+    const canvas = $("preview"), context = canvas.getContext("2d", {willReadFrequently: false});
+    const pixels = document.createElement("canvas"); pixels.width = pixels.height = 64;
+    const pixelContext = pixels.getContext("2d", {willReadFrequently: true});
+    let state = null, frameBusy = false, stateBusy = false, sliderBusy = false;
+    let toastTimer;
+
+    function notice(message, error = false) {
+      const box = $("notice");
+      box.textContent = message;
+      box.className = "notice visible" + (error ? " error" : "");
+      clearTimeout(toastTimer);
+      if (!error) toastTimer = setTimeout(() => box.className = "notice", 6000);
+    }
+    function renderState(next) {
+      state = next;
+      $("status").className = "status";
+      $("status").querySelector("span").textContent = "Connected";
+      $("mode").textContent = next.hardware ? "On the matrix · 64 × 64" : "Preview only · 64 × 64";
+      $("caption").textContent = next.caption || "";
+      if (!sliderBusy) $("brightness").value = next.brightness;
+      $("brightness-value").textContent = $("brightness").value + "%";
+      $("slowdown-value").textContent = next.gpio_slowdown;
+      document.querySelectorAll(".scene").forEach(button => {
+        const selected = button.dataset.scene === next.scene;
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+      });
+      if (next.restart_required && !$("notice").classList.contains("error")) {
+        notice("GPIO slowdown saved. Restart the controller on the Pi to apply it.");
+      }
+    }
+    function makeScenes(names) {
+      const grid = $("scenes"); grid.replaceChildren();
+      names.forEach(name => {
+        const button = document.createElement("button");
+        const [label, icon] = sceneNames[name] || [name, "◈"];
+        button.className = "scene";
+        button.dataset.scene = name;
+        button.innerHTML = '<span class="icon" aria-hidden="true"></span><span class="name"></span>';
+        button.querySelector(".icon").textContent = icon;
+        button.querySelector(".name").textContent = label;
+        button.addEventListener("click", () => update("scene", {scene: name}));
+        grid.append(button);
+      });
+    }
+    async function readState() {
+      if (stateBusy) return;
+      stateBusy = true;
+      try {
+        const response = await fetch("/api/state", {cache: "no-store"});
+        if (!response.ok) throw Error("Cannot reach the controller");
+        const next = await response.json();
+        if (!state) makeScenes(next.scenes);
+        renderState(next);
+      } catch (error) {
+        $("status").className = "status offline";
+        $("status").querySelector("span").textContent = "Offline";
+      } finally { stateBusy = false; }
+    }
+    async function update(endpoint, body) {
+      try {
+        const response = await fetch("/api/" + endpoint, {
+          method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (!response.ok) throw Error(result.detail || "Could not save this change.");
+        if ($("notice").classList.contains("error")) $("notice").className = "notice";
+        renderState(result);
+      } catch (error) { notice(error.message, true); await readState(); }
+    }
+    async function readFrame() {
+      if (frameBusy) return;
+      frameBusy = true;
+      try {
+        const response = await fetch("/api/frame.png", {cache: "no-store"});
+        if (!response.ok) throw Error("No frame");
+        const bitmap = await createImageBitmap(await response.blob());
+        pixelContext.clearRect(0, 0, 64, 64);
+        pixelContext.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const data = pixelContext.getImageData(0, 0, 64, 64).data;
+        context.fillStyle = "#050907";
+        context.fillRect(0, 0, 512, 512);
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+          const i = (y * 64 + x) * 4;
+          context.fillStyle = `rgb(${data[i]} ${data[i+1]} ${data[i+2]})`;
+          context.beginPath();
+          context.arc(x * 8 + 4, y * 8 + 4, 3.15, 0, Math.PI * 2);
+          context.fill();
+        }
+      } catch (_) { /* Keep the last visible frame during a short connection loss. */ }
+      finally { frameBusy = false; }
+    }
+    $("brightness").addEventListener("input", event => {
+      sliderBusy = true;
+      $("brightness-value").textContent = event.target.value + "%";
+    });
+    $("brightness").addEventListener("change", async event => {
+      await update("brightness", {brightness: Number(event.target.value)});
+      sliderBusy = false;
+    });
+    $("slowdown-minus").addEventListener("click", () => {
+      if (state) update("gpio-slowdown", {gpio_slowdown: Math.max(0, state.gpio_slowdown - 1)});
+    });
+    $("slowdown-plus").addEventListener("click", () => {
+      if (state) update("gpio-slowdown", {gpio_slowdown: Math.min(10, state.gpio_slowdown + 1)});
+    });
+    readState(); readFrame();
+    setInterval(readState, 2500);
+    setInterval(readFrame, 500);
+  </script>
+</body>
+</html>

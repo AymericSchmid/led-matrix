@@ -53,6 +53,10 @@ class HardwareOutputTests(unittest.TestCase):
         frame, _ = HeadlessScene(args).frame()
         output.show(frame)
         self.assertEqual(output.matrix.canvas.image.tobytes(), frame.tobytes())
+        self.assertEqual(output.matrix.canvas.brightness, 67)
+        output.set_brightness(42)
+        self.assertEqual(output.matrix.brightness, 42)
+        self.assertEqual(output.matrix.canvas.brightness, 42)
         with self.assertRaises(ValueError):
             output.show(Image.new("RGB", (32, 32)))
         output.close()

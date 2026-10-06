@@ -42,12 +42,21 @@ class MatrixOutput:
 
         self.matrix = RGBMatrix(options=options)
         self.canvas = self.matrix.CreateFrameCanvas()
+        self.brightness = brightness
 
     def show(self, frame: Image.Image) -> None:
         if frame.size != MATRIX_SIZE or frame.mode != "RGB":
             raise ValueError("The matrix expects a 64 x 64 RGB image.")
+        self.canvas.brightness = self.brightness
         self.canvas.SetImage(frame)
         self.canvas = self.matrix.SwapOnVSync(self.canvas)
+
+    def set_brightness(self, brightness: int) -> None:
+        if not 1 <= brightness <= 100:
+            raise ValueError("Brightness must be between 1 and 100.")
+        self.brightness = brightness
+        self.matrix.brightness = brightness
+        self.canvas.brightness = brightness
 
     def close(self) -> None:
         self.matrix.Clear()
