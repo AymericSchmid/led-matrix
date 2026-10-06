@@ -37,7 +37,8 @@ class HeadlessScene:
         self.shadow = ShadowAnimator(self.started) if args.scene == "shadow" else None
         self.eyes = EyesAnimator(
             self.started,
-            movement_rate=getattr(args, "eyes_movement_rate", 100) / 100,
+            movement_frequency=getattr(args, "eyes_movement_frequency", getattr(args, "eyes_movement_rate", 100)) / 100,
+            movement_speed=getattr(args, "eyes_movement_speed", getattr(args, "eyes_movement_rate", 100)) / 100,
             blink_rate=getattr(args, "eyes_blink_rate", 100) / 100,
         ) if args.scene == "eyes" else None
         self.spotify_worker = None
@@ -88,8 +89,9 @@ class HeadlessScene:
             return render_moon_frame(moon_phase(night)), f"Moon · {night.astimezone():%d %b %Y}"
         if args.scene == "eyes":
             self.eyes.set_rates(
-                getattr(args, "eyes_movement_rate", 100) / 100,
-                getattr(args, "eyes_blink_rate", 100) / 100, now,
+                blink_rate=getattr(args, "eyes_blink_rate", 100) / 100, now=now,
+                movement_frequency=getattr(args, "eyes_movement_frequency", getattr(args, "eyes_movement_rate", 100)) / 100,
+                movement_speed=getattr(args, "eyes_movement_speed", getattr(args, "eyes_movement_rate", 100)) / 100,
             )
             return render_eyes_frame(self.eyes.pose(now)), "Eyes"
         if args.scene == "walker":
@@ -105,6 +107,7 @@ class HeadlessScene:
         if args.scene == "shadow":
             return self.shadow.frame(
                 now, speed=getattr(args, "shadow_speed", 100),
+                frequency=getattr(args, "shadow_frequency", 100),
                 intensity=getattr(args, "shadow_intensity", 100),
             ), "Impossible shadow"
         if args.scene == "weather":

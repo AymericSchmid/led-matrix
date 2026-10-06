@@ -121,8 +121,9 @@
         <div id="weather-hour-setting" class="setting" hidden><div class="setting-header"><label for="weather-hour">Preview time</label><output id="weather-hour-value">13:00</output></div><input id="weather-hour" type="range" min="0" max="23" step="1"></div>
       </div>
       <div id="eyes-options" hidden>
-        <div class="setting"><div class="setting-header"><label for="eyes-movement-rate">Gaze movement</label><output id="eyes-movement-rate-value">100%</output></div><input id="eyes-movement-rate" type="range" min="25" max="300" step="25"><p>How often and how quickly the eyes look around. 100% is the original pace.</p></div>
-        <div class="setting"><div class="setting-header"><label for="eyes-blink-rate">Blink frequency</label><output id="eyes-blink-rate-value">100%</output></div><input id="eyes-blink-rate" type="range" min="25" max="300" step="25"><p>How often the eyes blink. The blink itself stays natural.</p></div>
+        <div class="setting"><div class="setting-header"><label for="eyes-movement-frequency">Gaze frequency</label><output id="eyes-movement-frequency-value">100%</output></div><input id="eyes-movement-frequency" type="range" min="5" max="300" step="5"><p>How rarely the eyes decide to look somewhere else. 100% is the original frequency.</p></div>
+        <div class="setting"><div class="setting-header"><label for="eyes-movement-speed">Gaze speed</label><output id="eyes-movement-speed-value">100%</output></div><input id="eyes-movement-speed" type="range" min="25" max="300" step="25"><p>How quickly the eyes travel once they start moving.</p></div>
+        <div class="setting"><div class="setting-header"><label for="eyes-blink-rate">Blink frequency</label><output id="eyes-blink-rate-value">100%</output></div><input id="eyes-blink-rate" type="range" min="5" max="300" step="5"><p>How often the eyes blink. The blink itself stays natural.</p></div>
       </div>
       <div id="kintsugi-options" hidden>
         <div class="setting"><div class="setting-header"><label for="kintsugi-theme">Ceramic finish</label></div><select id="kintsugi-theme"><option value="indigo">Deep indigo · gold</option><option value="ivory">Warm ivory · gold</option></select></div>
@@ -131,6 +132,7 @@
       </div>
       <div id="shadow-options" hidden>
         <div class="setting"><div class="setting-header"><label for="shadow-speed">Pace</label><output id="shadow-speed-value">100%</output></div><input id="shadow-speed" type="range" min="25" max="200" step="25"><p>The room stays still. This controls how quickly the shadow notices you.</p></div>
+        <div class="setting"><div class="setting-header"><label for="shadow-frequency">Appearance frequency</label><output id="shadow-frequency-value">100%</output></div><input id="shadow-frequency" type="range" min="5" max="200" step="5"><p>How often the shadow returns. Low values create long, random silences.</p></div>
         <div class="setting"><div class="setting-header"><label for="shadow-intensity">Uncanny presence</label><output id="shadow-intensity-value">100%</output></div><input id="shadow-intensity" type="range" min="25" max="100" step="5"><p>How far the silhouette reaches, and how clearly its eyes appear.</p></div>
       </div>
       <p id="empty-options" class="empty-options" hidden>This scene has no appearance settings yet.</p>
@@ -246,10 +248,12 @@
         $("weather-hour-value").textContent = String($("weather-hour").value).padStart(2, "0") + ":00";
       } else if (scene === "eyes") {
         if (!sceneSliderBusy) {
-          $("eyes-movement-rate").value = next.eyes_movement_rate;
+          $("eyes-movement-frequency").value = next.eyes_movement_frequency;
+          $("eyes-movement-speed").value = next.eyes_movement_speed;
           $("eyes-blink-rate").value = next.eyes_blink_rate;
         }
-        $("eyes-movement-rate-value").textContent = $("eyes-movement-rate").value + "%";
+        $("eyes-movement-frequency-value").textContent = $("eyes-movement-frequency").value + "%";
+        $("eyes-movement-speed-value").textContent = $("eyes-movement-speed").value + "%";
         $("eyes-blink-rate-value").textContent = $("eyes-blink-rate").value + "%";
       } else if (scene === "kintsugi") {
         $("kintsugi-theme").value = next.kintsugi_theme;
@@ -262,9 +266,11 @@
       } else if (scene === "shadow") {
         if (!sceneSliderBusy) {
           $("shadow-speed").value = next.shadow_speed;
+          $("shadow-frequency").value = next.shadow_frequency;
           $("shadow-intensity").value = next.shadow_intensity;
         }
         $("shadow-speed-value").textContent = $("shadow-speed").value + "%";
+        $("shadow-frequency-value").textContent = $("shadow-frequency").value + "%";
         $("shadow-intensity-value").textContent = $("shadow-intensity").value + "%";
       }
     }
@@ -411,12 +417,14 @@
       if (event.key === "Enter") { event.preventDefault(); $("weather-city-save").click(); }
     });
     bindSceneSlider("weather-hour", "weather_hour", value => String(value).padStart(2, "0") + ":00");
-    bindSceneSlider("eyes-movement-rate", "eyes_movement_rate", value => value + "%");
+    bindSceneSlider("eyes-movement-frequency", "eyes_movement_frequency", value => value + "%");
+    bindSceneSlider("eyes-movement-speed", "eyes_movement_speed", value => value + "%");
     bindSceneSlider("eyes-blink-rate", "eyes_blink_rate", value => value + "%");
     $("kintsugi-theme").addEventListener("change", event => setSceneOption("kintsugi_theme", event.target.value));
     bindSceneSlider("kintsugi-speed", "kintsugi_speed", value => value + "%");
     bindSceneSlider("kintsugi-density", "kintsugi_density", value => value + "%");
     bindSceneSlider("shadow-speed", "shadow_speed", value => value + "%");
+    bindSceneSlider("shadow-frequency", "shadow_frequency", value => value + "%");
     bindSceneSlider("shadow-intensity", "shadow_intensity", value => value + "%");
     $("brightness").addEventListener("change", async event => {
       await update("brightness", {brightness: Number(event.target.value)});

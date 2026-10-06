@@ -71,7 +71,7 @@ The matrix driver initializes with root access under `sudo` and then drops back 
 
 ### Phone controller on your Wi-Fi
 
-The phone controller is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, save GPIO slowdown, and connect Spotify. Each supported scene has its own settings: clock theme, numbers, ticks and hand size; Spotify cover, vinyl and colour-drift views with their relevant options; live or preview weather with city and preview hour; and separate gaze movement and blink frequency controls for the eyes. Scene changes appear on the matrix and preview immediately and persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling is planned for a later milestone.
+The phone controller is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, save GPIO slowdown, and connect Spotify. Each supported scene has its own settings: clock theme, numbers, ticks and hand size; Spotify cover, vinyl and colour-drift views with their relevant options; live or preview weather with city and preview hour; separate gaze frequency, gaze speed, and blink frequency controls for the eyes (all the way down to 5% for rare events); and independent pace, appearance frequency, and uncanny presence controls for the shadow. Scene changes appear on the matrix and preview immediately and persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling is planned for a later milestone.
 
 Install the additional web dependencies in the existing virtual environment:
 
@@ -138,17 +138,17 @@ python main.py --scene kintsugi --snapshot .preview/kintsugi.png
 
 A glazed ceramic surface fractures into irregular pieces. Gold slowly fills the connected seams, catches a moving reflection, and rests before the surface becomes whole again. A fresh pattern follows each 72-second cycle at the default pace. The artwork is generated locally with Pillow, with no downloaded images or network requests.
 
-The phone controller has **Ceramic finish** (indigo or ivory), **Pace** (25–300%), and **Crack density** (20–100%) controls. Settings persist. Changing pace preserves the current repair; changing density starts a new tile. In the emulator, **L** switches finish, **− / =** adjusts pace, **[ / ]** adjusts density, **R** starts a fresh tile, and **D** switches to eyes. The same options work with `--output matrix` on the Pi. Snapshots show the fully gilded tile.
+The phone controller has **Ceramic finish** (indigo or ivory), **Pace** (25–300%), and **Crack density** (20–100%) controls. Settings persist. Changing pace preserves the current repair; changing density starts a new tile. In the emulator, **L** switches finish, **− / =** adjusts pace, **[ / ]** adjusts density, **R** starts a fresh tile, and **D** moves to the impossible shadow. The same options work with `--output matrix` on the Pi. Snapshots show the fully gilded tile.
 
 ## Impossible shadow
 
 ```sh
 python main.py --scene shadow
-python main.py --scene shadow --shadow-speed 70 --shadow-intensity 100
+python main.py --scene shadow --shadow-speed 100 --shadow-frequency 5 --shadow-intensity 100
 python main.py --scene shadow --snapshot .preview/shadow.png
 ```
 
-The room is fixed: a cold window, an open door, and an empty chair. A shadow climbs up from the chair, reaches toward the viewer, pauses, and reveals two small eyes before returning to the floor. The scene is generated locally and loops in 48 seconds. The phone controller exposes **Pace** and **Uncanny presence**. In the emulator, **↑ / ↓** changes pace, **← / →** changes presence, **R** restarts the apparition, and **D** returns to eyes.
+The room is fixed: a cold window, an open door, and an empty chair. A shadow climbs up from the chair, reaches toward the viewer, pauses, and reveals two small eyes before returning to the floor. Its appearance interval is randomized. The phone controller exposes **Pace**, **Appearance frequency**, and **Uncanny presence**. Frequency can go down to 5%, while the apparition itself keeps its selected pace. In the emulator, **↑ / ↓** changes pace, **← / →** changes presence, **R** restarts the apparition, and **D** returns to eyes.
 
 ## Moon
 

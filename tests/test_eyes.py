@@ -47,6 +47,18 @@ class EyesTests(unittest.TestCase):
         self.assertEqual(animator.movement_rate, 2)
         self.assertEqual(animator.blink_rate, 0.5)
 
+    def test_frequency_can_be_rare_while_speed_stays_normal(self):
+        rare = EyesAnimator(now=0, seed=4, movement_frequency=.05, movement_speed=1)
+        normal = EyesAnimator(now=0, seed=4, movement_frequency=1, movement_speed=1)
+        self.assertGreater(rare.next_move, normal.next_move * 10)
+        self.assertEqual(rare.movement_speed, normal.movement_speed)
+
+    def test_blinks_can_be_rare_without_changing_their_duration(self):
+        rare = EyesAnimator(now=0, seed=4, blink_rate=.05)
+        normal = EyesAnimator(now=0, seed=4, blink_rate=1)
+        self.assertGreater(rare.next_blink, normal.next_blink * 10)
+        self.assertEqual(rare.blink_duration, normal.blink_duration)
+
 
 if __name__ == "__main__":
     unittest.main()

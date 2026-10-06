@@ -79,7 +79,8 @@ class MatrixEmulator:
         weather_demo: str | None = None,
         weather_hour: int = 13,
         kintsugi_theme: str = "indigo", kintsugi_speed: int = 100, kintsugi_density: int = 50,
-        shadow_speed: int = 100, shadow_intensity: int = 100,
+        shadow_speed: int = 100, shadow_frequency: int = 100, shadow_intensity: int = 100,
+        eyes_movement_frequency: int = 100, eyes_movement_speed: int = 100,
     ) -> None:
         # Keep desktop imports out of the image-rendering path.
         import tkinter as tk
@@ -92,7 +93,12 @@ class MatrixEmulator:
         self.weather_worker = None
         self._weather_conditions: WeatherConditions | None = None
         self._weather_error = ""
-        self.eyes_animator = EyesAnimator(time.monotonic()) if scene == "eyes" else None
+        self.eyes_movement_frequency = eyes_movement_frequency
+        self.eyes_movement_speed = eyes_movement_speed
+        self.eyes_animator = EyesAnimator(
+            time.monotonic(), movement_frequency=eyes_movement_frequency / 100,
+            movement_speed=eyes_movement_speed / 100,
+        ) if scene == "eyes" else None
         self.walk_started = time.monotonic()
         self.kintsugi = KintsugiAnimator(time.monotonic()) if scene == "kintsugi" else None
         self.kintsugi_theme = kintsugi_theme
@@ -100,6 +106,7 @@ class MatrixEmulator:
         self.kintsugi_density = kintsugi_density
         self.shadow = ShadowAnimator(time.monotonic()) if scene == "shadow" else None
         self.shadow_speed = shadow_speed
+        self.shadow_frequency = shadow_frequency
         self.shadow_intensity = shadow_intensity
         self.weather_city = weather_city
         self.weather_demo = weather_demo
@@ -379,7 +386,12 @@ class MatrixEmulator:
             self.shadow = ShadowAnimator(time.monotonic())
         elif self.scene == "shadow":
             self.scene = "eyes"
-            self.eyes_animator = EyesAnimator(time.monotonic())
+            frequency = getattr(self, "eyes_movement_frequency", 100)
+            speed = getattr(self, "eyes_movement_speed", 100)
+            self.eyes_animator = EyesAnimator(
+                time.monotonic(), movement_frequency=frequency / 100,
+                movement_speed=speed / 100,
+            )
         else:
             return
         self._last_frame_key = None
@@ -454,6 +466,11 @@ class MatrixEmulator:
         if self.scene in ("eyes", "walker", "kintsugi", "shadow"):
             now = time.monotonic()
             if self.scene == "eyes":
+                self.eyes_animator.set_rates(
+                    blink_rate=1.0, now=now,
+                    movement_frequency=self.eyes_movement_frequency / 100,
+                    movement_speed=self.eyes_movement_speed / 100,
+                )
                 frame = render_eyes_frame(self.eyes_animator.pose(now))
                 caption = "EYES · D: WALKER"
             elif self.scene == "walker":
@@ -470,7 +487,10 @@ class MatrixEmulator:
                     "\nR: NEW TILE · D: SHADOW"
                 )
             else:
-                frame = self.shadow.frame(now, speed=self.shadow_speed, intensity=self.shadow_intensity)
+                frame = self.shadow.frame(
+                    now, speed=self.shadow_speed, frequency=self.shadow_frequency,
+                    intensity=self.shadow_intensity,
+                )
                 caption = (
                     "IMPOSSIBLE SHADOW"
                     f"\n↑/↓: PACE {self.shadow_speed}% · ←/→: UNEASE {self.shadow_intensity}%"
@@ -565,6 +585,9 @@ def main() -> None:
     parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi", "shadow"), default="clock")
     parser.add_argument("--shadow-speed", type=int, default=100, help="Shadow animation pace, 25–200 percent.")
     parser.add_argument("--shadow-intensity", type=int, default=100, help="Shadow distortion and approach, 25–100 percent.")
+    parser.add_argument("--shadow-frequency", type=int, default=100, help="Random shadow appearance frequency, 5–200 percent.")
+    parser.add_argument("--eyes-movement-frequency", type=int, default=100, help="Eye gaze frequency, 5–300 percent.")
+    parser.add_argument("--eyes-movement-speed", type=int, default=100, help="Eye gaze movement speed, 25–300 percent.")
     parser.add_argument("--kintsugi-theme", choices=("indigo", "ivory"), default="indigo")
     parser.add_argument("--kintsugi-speed", type=int, default=100, help="Kintsugi pace, 25–300 percent.")
     parser.add_argument("--kintsugi-density", type=int, default=50, help="Kintsugi crack density, 20–100 percent.")
@@ -616,6 +639,12 @@ def main() -> None:
         parser.error("--shadow-speed must be between 25 and 200.")
     if not 25 <= args.shadow_intensity <= 100:
         parser.error("--shadow-intensity must be between 25 and 100.")
+    if not 5 <= args.shadow_frequency <= 200:
+        parser.error("--shadow-frequency must be between 5 and 200.")
+    if not 5 <= args.eyes_movement_frequency <= 300:
+        parser.error("--eyes-movement-frequency must be between 5 and 300.")
+    if not 25 <= args.eyes_movement_speed <= 300:
+        parser.error("--eyes-movement-speed must be between 25 and 300.")
     if not 25 <= args.kintsugi_speed <= 300:
         parser.error("--kintsugi-speed must be between 25 and 300.")
     if not 20 <= args.kintsugi_density <= 100:
@@ -702,6 +731,9 @@ def main() -> None:
         kintsugi_theme=args.kintsugi_theme, kintsugi_speed=args.kintsugi_speed,
         kintsugi_density=args.kintsugi_density,
         shadow_speed=args.shadow_speed, shadow_intensity=args.shadow_intensity,
+        shadow_frequency=args.shadow_frequency,
+        eyes_movement_frequency=args.eyes_movement_frequency,
+        eyes_movement_speed=args.eyes_movement_speed,
     )
     emulator.run()
 

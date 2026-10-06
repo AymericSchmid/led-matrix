@@ -22,39 +22,59 @@ class EyesAnimator:
     def __init__(
         self, now: float = 0.0, seed: int | None = None, *,
         movement_rate: float = 1.0, blink_rate: float = 1.0,
+        movement_frequency: float | None = None, movement_speed: float | None = None,
     ) -> None:
-        if movement_rate <= 0 or blink_rate <= 0:
+        movement_frequency = movement_rate if movement_frequency is None else movement_frequency
+        movement_speed = movement_rate if movement_speed is None else movement_speed
+        if movement_frequency <= 0 or movement_speed <= 0 or blink_rate <= 0:
             raise ValueError("Eye animation rates must be positive.")
         self.random = random.Random(seed)
-        self.movement_rate = movement_rate
+        self.movement_rate = movement_frequency  # Backwards-compatible alias.
+        self.movement_frequency = movement_frequency
+        self.movement_speed = movement_speed
         self.blink_rate = blink_rate
         self.gaze_from = (0.0, 0.0)
         self.gaze_to = (0.0, 0.0)
         self.move_start = now
         self.move_end = now
-        self.next_move = now + self.random.uniform(0.5, 2.4) / movement_rate
+        self.next_move = now + self.random.uniform(0.5, 2.4) / movement_frequency
         self.blink_start = float("-inf")
         self.blink_duration = 0.32
         self.next_blink = now + self.random.uniform(2.0, 5.5) / blink_rate
         self.blink_eye = "both"
         self.double_pending = False
 
-    def set_rates(self, movement_rate: float, blink_rate: float, now: float) -> None:
+    def set_rates(
+        self, movement_rate: float | None = None, blink_rate: float | None = None, now: float = 0.0,
+        *, movement_frequency: float | None = None, movement_speed: float | None = None,
+    ) -> None:
         """Retiming upcoming actions keeps the current gaze and blink intact."""
-        if movement_rate <= 0 or blink_rate <= 0:
+        if movement_frequency is None:
+            movement_frequency = movement_rate if movement_rate is not None else self.movement_frequency
+        if movement_speed is None:
+            movement_speed = movement_rate if movement_rate is not None else self.movement_speed
+        if blink_rate is None:
+            blink_rate = self.blink_rate
+        if movement_frequency <= 0 or movement_speed <= 0 or blink_rate <= 0:
             raise ValueError("Eye animation rates must be positive.")
-        if (movement_rate, blink_rate) == (self.movement_rate, self.blink_rate):
+        if (movement_frequency, movement_speed, blink_rate) == (
+            self.movement_frequency, self.movement_speed, self.blink_rate
+        ):
             return
         self.pose(now)
-        if movement_rate != self.movement_rate:
-            factor = self.movement_rate / movement_rate
+        if movement_frequency != self.movement_frequency:
+            factor = self.movement_frequency / movement_frequency
+            self.next_move = now + (self.next_move - now) * factor
+            self.movement_frequency = movement_frequency
+            self.movement_rate = movement_frequency
+        if movement_speed != self.movement_speed:
+            factor = self.movement_speed / movement_speed
             if now < self.move_end:
                 current_gaze = self._gaze_at(now)
                 self.gaze_from = current_gaze
                 self.move_start = now
                 self.move_end = now + (self.move_end - now) * factor
-            self.next_move = now + (self.next_move - now) * factor
-            self.movement_rate = movement_rate
+            self.movement_speed = movement_speed
         if blink_rate != self.blink_rate:
             factor = self.blink_rate / blink_rate
             anchor = max(now, self.blink_start + self.blink_duration)
@@ -75,8 +95,8 @@ class EyesAnimator:
             self.gaze_from = self._gaze_at(event_time)
             self.gaze_to = (self.random.uniform(-4.6, 4.6), self.random.uniform(-2.2, 2.2))
             self.move_start = event_time
-            self.move_end = event_time + self.random.uniform(0.12, 0.55) / self.movement_rate
-            self.next_move = self.move_end + self.random.uniform(0.55, 3.4) / self.movement_rate
+            self.move_end = event_time + self.random.uniform(0.12, 0.55) / self.movement_speed
+            self.next_move = self.move_end + self.random.uniform(0.55, 3.4) / self.movement_frequency
 
         while now >= self.next_blink:
             event_time = self.next_blink

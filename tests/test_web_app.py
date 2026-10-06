@@ -43,7 +43,7 @@ class WebAppTests(unittest.TestCase):
                     self.assertIn('id="clock-theme"', page.text)
                     self.assertIn('id="spotify-style"', page.text)
                     self.assertIn('id="weather-mode"', page.text)
-                    self.assertIn('id="eyes-movement-rate"', page.text)
+                    self.assertIn('id="eyes-movement-frequency"', page.text)
                     self.assertIn('id="kintsugi-theme"', page.text)
                     self.assertIn('id="shadow-speed"', page.text)
                     self.assertEqual(client.get("/api/state").json()["scene"], "clock")
@@ -71,10 +71,10 @@ class WebAppTests(unittest.TestCase):
                     self.assertEqual(invalid.status_code, 400)
                     self.assertEqual(client.get("/api/state").json()["theme"], "dark")
                     eyes = client.put("/api/scene-options", json={
-                        "scene": "eyes", "changes": {"eyes_movement_rate": 150, "eyes_blink_rate": 75},
+                        "scene": "eyes", "changes": {"eyes_movement_frequency": 5, "eyes_movement_speed": 100, "eyes_blink_rate": 5},
                     })
                     self.assertEqual(eyes.status_code, 200)
-                    self.assertEqual(eyes.json()["eyes_movement_rate"], 150)
+                    self.assertEqual(eyes.json()["eyes_movement_frequency"], 5)
                     with patch("headless_scene.configured_client_id", return_value=""):
                         self.assertEqual(client.put("/api/scene", json={"scene": "spotify"}).status_code, 409)
                     self.assertEqual(client.get("/api/state").json()["scene"], "circle")
@@ -88,7 +88,7 @@ class WebAppTests(unittest.TestCase):
                     shadow = client.put("/api/scene", json={"scene": "shadow"})
                     self.assertEqual(shadow.status_code, 200)
                     options = client.put("/api/scene-options", json={
-                        "scene": "shadow", "changes": {"shadow_speed": 150, "shadow_intensity": 80},
+                        "scene": "shadow", "changes": {"shadow_speed": 150, "shadow_frequency": 5, "shadow_intensity": 80},
                     })
                     self.assertEqual(options.status_code, 200)
                     self.assertEqual(options.json()["shadow_intensity"], 80)

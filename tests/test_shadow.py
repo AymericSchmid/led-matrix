@@ -39,6 +39,14 @@ class ShadowTests(unittest.TestCase):
         animator.frame(animator.last_time + 1, speed=200)
         self.assertAlmostEqual(animator.phase, phase + 2 / CYCLE_SECONDS)
 
+    def test_appearance_frequency_adds_a_long_random_quiet_period(self):
+        animator = ShadowAnimator(now=0, seed=3)
+        start = animator.next_appearance
+        animator.frame(start, speed=100, frequency=5)
+        animator.frame(start + CYCLE_SECONDS + .01, speed=100, frequency=5)
+        self.assertFalse(animator.active)
+        self.assertGreater(animator.next_appearance - animator.last_time, 500)
+
 
 if __name__ == "__main__":
     unittest.main()

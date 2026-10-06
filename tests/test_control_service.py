@@ -116,15 +116,16 @@ class ControlServiceTests(unittest.TestCase):
                 service.set_scene_options("weather", {"weather_demo": "rain"})
                 self.assertEqual(weather_kind(service.source.weather.code), "rain")
                 service.set_scene_options("eyes", {
-                    "eyes_movement_rate": 175, "eyes_blink_rate": 50,
+                    "eyes_movement_frequency": 175, "eyes_movement_speed": 100, "eyes_blink_rate": 5,
                 })
                 service.select_scene("eyes")
                 animator = service.source.eyes
-                service.set_scene_options("eyes", {"eyes_movement_rate": 200})
+                service.set_scene_options("eyes", {"eyes_movement_frequency": 5, "eyes_movement_speed": 100})
                 service.source.frame()
                 self.assertIs(service.source.eyes, animator)
-                self.assertEqual(animator.movement_rate, 2)
-                self.assertEqual(animator.blink_rate, 0.5)
+                self.assertEqual(animator.movement_frequency, .05)
+                self.assertEqual(animator.movement_speed, 1)
+                self.assertEqual(animator.blink_rate, 0.05)
                 service.select_scene("kintsugi")
                 ceramic = service.source.kintsugi
                 service.set_scene_options("kintsugi", {
@@ -137,7 +138,7 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(ceramic.speed, 175)
                 service.select_scene("shadow")
                 apparition = service.source.shadow
-                service.set_scene_options("shadow", {"shadow_speed": 150, "shadow_intensity": 80})
+                service.set_scene_options("shadow", {"shadow_speed": 150, "shadow_frequency": 5, "shadow_intensity": 80})
                 frame, caption = service.source.frame()
                 self.assertIs(service.source.shadow, apparition)
                 self.assertEqual(frame.size, (64, 64))
@@ -150,14 +151,16 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(restarted.state()["theme"], "dark")
                 self.assertEqual(restarted.state()["spotify_style"], "colour-drift")
                 self.assertEqual(restarted.state()["weather_demo"], "rain")
-                self.assertEqual(restarted.state()["eyes_movement_rate"], 200)
-                self.assertEqual(restarted.state()["eyes_blink_rate"], 50)
+                self.assertEqual(restarted.state()["eyes_movement_frequency"], 5)
+                self.assertEqual(restarted.state()["eyes_movement_speed"], 100)
+                self.assertEqual(restarted.state()["eyes_blink_rate"], 5)
                 self.assertEqual(restarted.state()["scene"], "shadow")
                 self.assertEqual(restarted.state()["kintsugi_theme"], "ivory")
                 self.assertEqual(restarted.state()["kintsugi_speed"], 175)
                 self.assertEqual(restarted.state()["kintsugi_density"], 80)
                 self.assertEqual(restarted.state()["scene"], "shadow")
                 self.assertEqual(restarted.state()["shadow_speed"], 150)
+                self.assertEqual(restarted.state()["shadow_frequency"], 5)
                 self.assertEqual(restarted.state()["shadow_intensity"], 80)
             finally:
                 restarted.stop()
@@ -174,12 +177,15 @@ class ControlServiceTests(unittest.TestCase):
                     ("weather", {"weather_hour": 24}),
                     ("weather", {"weather_city": " "}),
                     ("spotify", {"drift_blackness": -1}),
-                    ("eyes", {"eyes_movement_rate": 0}),
+                    ("eyes", {"eyes_movement_frequency": 4}),
+                    ("eyes", {"eyes_movement_speed": 24}),
+                    ("eyes", {"eyes_blink_rate": 4}),
                     ("eyes", {"eyes_blink_rate": 301}),
                     ("kintsugi", {"kintsugi_theme": "blue"}),
                     ("kintsugi", {"kintsugi_density": 10}),
                     ("kintsugi", {"kintsugi_speed": 0}),
                     ("shadow", {"shadow_speed": 201}),
+                    ("shadow", {"shadow_frequency": 4}),
                     ("shadow", {"shadow_intensity": 24}),
                     ("moon", {"theme": "dark"}),
                     ("clock", {"theme": "dark", "no_ticks": 1}),

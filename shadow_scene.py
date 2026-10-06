@@ -219,17 +219,44 @@ def render_shadow_frame(phase: float, *, seed: int = 17, intensity: int = 100) -
 class ShadowAnimator:
     def __init__(self, now: float = 0.0, seed: int | None = None):
         self.seed = random.SystemRandom().getrandbits(32) if seed is None else seed
+        self.random = random.Random(self.seed)
         self.last_time = now
-        self.elapsed = 0.0
+        self.active_elapsed = 0.0
+        self.active = False
+        self.next_appearance = now + self._quiet_interval(100, first=True)
         self.speed = 100
+        self.frequency = 100
+
+    def _quiet_interval(self, frequency: int, *, first: bool = False) -> float:
+        # At 100%, appearances still have a small random pause. Lower settings
+        # stretch that pause dramatically without slowing the apparition itself.
+        base = 5.0 if first else 3.0
+        extra = CYCLE_SECONDS * max(0.0, 100 / frequency - 1)
+        return (base + extra) * self.random.uniform(.72, 1.38)
 
     @property
     def phase(self) -> float:
-        return self.elapsed % CYCLE_SECONDS / CYCLE_SECONDS
+        return self.active_elapsed / CYCLE_SECONDS if self.active else 0.0
 
-    def frame(self, now: float, *, speed: int = 100, intensity: int = 100) -> Image.Image:
-        self.elapsed += max(0, now - self.last_time) * self.speed / 100
+    def frame(
+        self, now: float, *, speed: int = 100, frequency: int = 100, intensity: int = 100,
+    ) -> Image.Image:
+        elapsed = max(0, now - self.last_time)
         self.last_time = now
+        if frequency != self.frequency:
+            remaining = max(0, self.next_appearance - now)
+            self.next_appearance = now + remaining * self.frequency / frequency
+            self.frequency = frequency
         self.speed = speed
-        cycle = int(self.elapsed // CYCLE_SECONDS)
-        return render_shadow_frame(self.phase, seed=self.seed + cycle * 491, intensity=intensity)
+        if not self.active and now >= self.next_appearance:
+            self.active = True
+            self.active_elapsed = 0.0
+        if self.active:
+            self.active_elapsed += elapsed * self.speed / 100
+            if self.active_elapsed >= CYCLE_SECONDS:
+                self.active = False
+                self.active_elapsed = 0.0
+                self.next_appearance = now + self._quiet_interval(self.frequency)
+        return render_shadow_frame(
+            self.phase, seed=self.seed + round(self.next_appearance) * 491, intensity=intensity,
+        )
