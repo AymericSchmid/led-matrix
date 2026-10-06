@@ -71,7 +71,7 @@ The matrix driver initializes with root access under `sudo` and then drops back 
 
 ### Phone controller on your Wi-Fi
 
-The first phone-control version is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, and save GPIO slowdown. Settings persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling and Spotify sign-in from the phone are planned for later milestones.
+The phone controller is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, save GPIO slowdown, and connect Spotify. Settings persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling is planned for a later milestone.
 
 Install the additional web dependencies in the existing virtual environment:
 
@@ -90,9 +90,16 @@ On a phone connected to the same Wi-Fi, open **http://matrix.local:8000**. If th
 
 To try the phone page on a computer without a matrix, install `requirements-web.txt` and run `python web_app.py`. Then open **http://127.0.0.1:8000**. The page labels this mode “Preview only.”
 
-If your Pi already has a Spotify token, the Spotify scene can use it. Otherwise, you can supply the public Client ID once with `--spotify-client-id YOUR_CLIENT_ID`. The current headless sign-in still needs the SSH tunnel described below; connecting directly from the phone will be a later milestone.
+To connect Spotify from your phone:
 
-### Spotify on the headless Pi
+1. In your Spotify Developer app, keep **exactly** `http://127.0.0.1:8888/callback` in the Redirect URI list. This is the same URI used by the desktop emulator.
+2. In the controller's **Spotify account** card, enter your public Client ID once and tap **Connect Spotify**. You can also provide it when launching with `--spotify-client-id YOUR_CLIENT_ID`.
+3. Tap **Open Spotify**. Approve access in the new browser tab. The browser will probably say it cannot open the final `127.0.0.1` page. Copy the **entire address** from its address bar, including `code` and `state`.
+4. Return to the controller tab, paste that address, and tap **Finish connection**. The Spotify scene opens automatically. You can later change accounts or disconnect from the same card.
+
+The pasted callback is verified against a short-lived PKCE sign-in attempt. The Pi exchanges the code and keeps the refresh token in its Git-ignored `.spotify/tokens.json`; the controller never asks for your Spotify password or Client Secret. Sign-in normally needs to be repeated only if access is revoked or you disconnect. The callback must be copied because [Spotify requires HTTPS for non-loopback redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), while this controller uses HTTP only on your local Wi-Fi.
+
+### Spotify with the command-line matrix runner
 
 The Spotify app still uses `http://127.0.0.1:8888/callback` for sign-in. Because the Pi has no browser, open an SSH session **with port forwarding** from your computer before starting the scene:
 
@@ -177,9 +184,9 @@ In both vinyl versions, the stylus starts close to the center label and moves ou
 4. Start the Spotify scene and click **Connect Spotify**. If prompted, paste the app's **Client ID**, not its Client Secret.
 5. Sign in through Spotify in your browser and approve access to your currently playing content. Return to the emulator and play a song.
 
-For emulator sign-in, the browser and emulator must run on the same computer. On the Pi, the SSH tunnel described above connects your computer's browser to the headless app. The app requests only `user-read-currently-playing`; it does not play, pause, or modify anything in your Spotify account. PKCE authorization means no Client Secret is needed.
+For emulator sign-in, the browser and emulator must run on the same computer. For the command-line Pi runner, use the SSH tunnel described above; the phone controller has its own sign-in steps above. The app requests only `user-read-currently-playing`; it does not play, pause, or modify anything in your Spotify account. PKCE authorization means no Client Secret is needed.
 
-The public Client ID is saved in `.spotify/config.json`. Login credentials are stored locally in `.spotify/tokens.json`, refreshed automatically, and excluded from Git. Keep that folder private. To switch accounts, close the app, delete `.spotify/tokens.json`, then connect again. You may also set the `SPOTIFY_CLIENT_ID` environment variable instead of using the saved configuration.
+The desktop emulator stores the public Client ID in `.spotify/config.json`; the phone controller stores it in `.matrix/control.db`. Login credentials are stored locally in `.spotify/tokens.json`, refreshed automatically, and excluded from Git. Keep that folder private. The phone controller has **Change account** and **Disconnect** buttons. For the desktop emulator, close the app and delete `.spotify/tokens.json` to switch accounts. You may also set the `SPOTIFY_CLIENT_ID` environment variable instead of using the saved configuration.
 
 ### Display behavior
 

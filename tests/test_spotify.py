@@ -58,6 +58,19 @@ class SpotifyTests(unittest.TestCase):
         self.assertEqual(spotify.callback_result("/callback?state=expected&code=code", "expected"), ("code", ""))
         self.assertEqual(spotify.callback_result("/callback?state=expected&error=access_denied", "expected"), ("", "access_denied"))
 
+    def test_phone_callback_requires_exact_loopback_address_and_state(self):
+        good = "http://127.0.0.1:8888/callback?code=example&state=expected"
+        self.assertEqual(spotify.phone_callback_result(good, "expected"), ("example", ""))
+        for address in (
+            "http://matrix.local:8888/callback?code=example&state=expected",
+            "http://127.0.0.1:8000/callback?code=example&state=expected",
+            "https://127.0.0.1:8888/callback?code=example&state=expected",
+            "http://127.0.0.1:8888/callback?code=example&state=wrong",
+            "http://127.0.0.1:8888/other?code=example&state=expected",
+        ):
+            with self.subTest(address=address), self.assertRaises(spotify.SpotifyError):
+                spotify.phone_callback_result(address, "expected")
+
     def test_first_run_requires_login_without_network(self):
         with patch.object(spotify, "request_json") as request:
             with self.assertRaises(spotify.SpotifyError) as raised:

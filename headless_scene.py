@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 from clock_face import draw_clock
 from eyes_scene import EyesAnimator, render_eyes_frame
 from moon_scene import nighttime_reference, moon_phase, render_moon_frame
-from spotify_client import SpotifyClient, SpotifyError, configured_client_id, validate_client_id
+from spotify_client import DATA_DIR as SPOTIFY_DATA_DIR, SpotifyClient, SpotifyError, configured_client_id, validate_client_id
 from spotify_scene import SpotifyView, SpotifyWorker, render_spotify_frame, waiting_frame
 from weather_scene import WeatherWorker, demo_weather, render_weather_frame
 from walker_scene import STEP_SECONDS, render_walker_frame
@@ -22,9 +22,14 @@ def circle_frame() -> Image.Image:
 
 
 class HeadlessScene:
-    def __init__(self, args, fixed_time: datetime | None = None):
+    def __init__(
+        self, args, fixed_time: datetime | None = None, *,
+        auto_spotify_login: bool = True, spotify_data_dir=None,
+    ):
         self.args = args
         self.fixed_time = fixed_time
+        self.auto_spotify_login = auto_spotify_login
+        self.spotify_data_dir = spotify_data_dir or SPOTIFY_DATA_DIR
         self.started = time.monotonic()
         self.eyes = EyesAnimator(self.started) if args.scene == "eyes" else None
         self.spotify_worker = None
@@ -42,10 +47,10 @@ class HeadlessScene:
             client_id = self.args.spotify_client_id or configured_client_id()
             if not client_id:
                 raise SpotifyError("Add --spotify-client-id CLIENT_ID for the Spotify scene.")
-            client = SpotifyClient(validate_client_id(client_id))
+            client = SpotifyClient(validate_client_id(client_id), self.spotify_data_dir)
             self.spotify_worker = SpotifyWorker(client, headless=True)
             self.spotify_worker.start()
-            if not client.token:
+            if not client.token and self.auto_spotify_login:
                 self.spotify_worker.connect()
         elif self.args.scene == "weather" and not self.args.weather_demo:
             self.weather_worker = WeatherWorker(self.args.weather_city)

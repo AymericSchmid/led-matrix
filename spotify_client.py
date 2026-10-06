@@ -124,6 +124,34 @@ def callback_result(path: str, expected_state: str) -> tuple[str, str] | None:
     return query.get("code", [""])[0], query.get("error", [""])[0]
 
 
+def authorization_url(client_id: str, challenge: str, state: str) -> str:
+    query = urlencode({
+        "client_id": validate_client_id(client_id), "response_type": "code",
+        "redirect_uri": REDIRECT_URI, "scope": SCOPE, "state": state,
+        "code_challenge_method": "S256", "code_challenge": challenge,
+    })
+    return "https://accounts.spotify.com/authorize?" + query
+
+
+def phone_callback_result(address: str, expected_state: str) -> tuple[str, str]:
+    """Validate the full loopback URL copied from a phone's address bar."""
+    try:
+        parsed = urlsplit(address.strip())
+        valid_origin = (
+            parsed.scheme == "http" and parsed.hostname == "127.0.0.1"
+            and parsed.port == 8888 and not parsed.username and not parsed.password
+            and not parsed.fragment
+        )
+    except ValueError:
+        valid_origin = False
+    if not valid_origin:
+        raise SpotifyError("Paste the complete 127.0.0.1:8888/callback address shown after Spotify sign-in.")
+    result = callback_result(parsed.path + "?" + parsed.query, expected_state)
+    if result is None or not any(result):
+        raise SpotifyError("That Spotify return address is invalid or belongs to another sign-in attempt.")
+    return result
+
+
 @dataclass(frozen=True)
 class PlayingTrack:
     title: str
@@ -216,6 +244,14 @@ class SpotifyClient:
         temporary.replace(self.token_path)
         self.token = token
 
+    def exchange_code(self, code: str, verifier: str) -> None:
+        # An explicit new login must not inherit another account's refresh token.
+        self.token = {}
+        self._save_token(request_json(TOKEN_URL, fields={
+            "grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI,
+            "client_id": self.client_id, "code_verifier": verifier,
+        }))
+
     def authorize(self, stop: Event, *, open_browser: bool = True) -> None:
         verifier, challenge = pkce_pair()
         state = secrets.token_urlsafe(32)
@@ -250,19 +286,14 @@ class SpotifyClient:
                                needs_login=True) from None
         with server:
             server.timeout = 0.3
-            query = urlencode({
-                "client_id": self.client_id, "response_type": "code", "redirect_uri": REDIRECT_URI,
-                "scope": SCOPE, "state": state, "code_challenge_method": "S256",
-                "code_challenge": challenge,
-            })
-            authorization_url = "https://accounts.spotify.com/authorize?" + query
+            login_url = authorization_url(self.client_id, challenge, state)
             if open_browser:
-                if not webbrowser.open(authorization_url):
+                if not webbrowser.open(login_url):
                     raise SpotifyError("Could not open your browser. Please try Connect Spotify again.",
                                        needs_login=True)
             else:
                 print("Open this Spotify sign-in URL in your computer's browser:", flush=True)
-                print(authorization_url, flush=True)
+                print(login_url, flush=True)
                 print("Keep SSH port forwarding for 127.0.0.1:8888 open until sign-in completes.",
                       flush=True)
             deadline = time.monotonic() + 180
@@ -276,12 +307,7 @@ class SpotifyClient:
         if error or not code:
             raise SpotifyError("Spotify sign-in was cancelled. Connect whenever you are ready.",
                                needs_login=True)
-        # An explicit new login must not inherit a previous account's refresh token.
-        self.token = {}
-        self._save_token(request_json(TOKEN_URL, fields={
-            "grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI,
-            "client_id": self.client_id, "code_verifier": verifier,
-        }))
+        self.exchange_code(code, verifier)
 
     def access_token(self, *, force_refresh: bool = False) -> str:
         if not self.token:

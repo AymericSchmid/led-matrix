@@ -54,6 +54,24 @@
     .stepper { display: flex; gap: 9px; align-items: center; }
     .stepper button { width: 38px; height: 34px; border: 1px solid #53644f; background: #2a362b; color: #f2f1e8; border-radius: 10px; font-size: 20px; }
     .stepper output { width: 25px; text-align: center; }
+    .spotify-card { border: 1px solid #3e5440; border-radius: 20px; padding: 17px; background: linear-gradient(145deg, #213327, #1a241e 65%); }
+    .spotify-top { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+    .spotify-mark { display: grid; place-items: center; width: 33px; height: 33px; flex: none; border-radius: 50%; background: #1ed760; color: #102017; font-size: 24px; font-weight: 750; }
+    .spotify-title { font-size: 13px; font-weight: 650; }
+    .spotify-sub { margin-top: 2px; font-size: 11px; color: #a7b7a9; }
+    .spotify-card p { margin: 0 0 14px; color: #b7c6b9; line-height: 1.5; font-size: 12px; }
+    .spotify-card label { display: block; margin: 12px 0 7px; font-size: 11px; color: #c9d8ca; font-weight: 620; }
+    .text-input { display: block; width: 100%; min-width: 0; padding: 12px; border-radius: 11px; border: 1px solid #536954; outline: 0; color: #f2f1e8; background: #101913; font-size: 13px; }
+    .text-input:focus { border-color: #c6e7a1; box-shadow: 0 0 0 3px #afdc8930; }
+    .text-input::placeholder { color: #748775; }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+    .action { display: inline-flex; justify-content: center; align-items: center; min-height: 39px; padding: 9px 14px; border-radius: 11px; border: 1px solid #bddea0; background: #d9efaa; color: #1b2b1d; text-decoration: none; font-size: 12px; font-weight: 700; }
+    .action.secondary { border-color: #516653; background: #2d3b30; color: #e0ecda; }
+    .action:disabled { opacity: .5; cursor: wait; }
+    .steps { margin: 0 0 15px; padding-left: 20px; color: #c3d0c4; font-size: 12px; line-height: 1.55; }
+    .steps li + li { margin-top: 7px; }
+    .spotify-note { margin-top: 11px !important; color: #8ea792 !important; font-size: 11px !important; }
+    [hidden] { display: none !important; }
     .notice { display: none; margin: 14px 0 0; padding: 12px 14px; border-radius: 13px; font-size: 12px; line-height: 1.4; color: #ffe1ba; background: #503d2b; border: 1px solid #8b6642; }
     .notice.visible { display: block; }
     .notice.error { color: #ffcac0; background: #482c2a; border-color: #80504a; }
@@ -76,6 +94,30 @@
 
     <div class="section-head"><h2>Choose a scene</h2><span class="hint">Tap to display</span></div>
     <section id="scenes" class="scene-grid" aria-label="Scenes"></section>
+
+    <div class="section-head"><h2>Spotify account</h2><span id="spotify-state" class="hint">Checking…</span></div>
+    <section class="spotify-card" aria-label="Spotify connection">
+      <div class="spotify-top"><div class="spotify-mark" aria-hidden="true">≋</div><div><div class="spotify-title">Music on the matrix</div><div class="spotify-sub">Connect your account to show what is playing</div></div></div>
+      <div id="spotify-connected" hidden>
+        <p>Spotify is connected to this Raspberry Pi. Choose a Spotify scene whenever you want to see your music.</p>
+        <div class="actions"><button id="spotify-change" class="action secondary" type="button">Change account</button><button id="spotify-disconnect" class="action secondary" type="button">Disconnect</button></div>
+      </div>
+      <div id="spotify-setup" hidden>
+        <p>Enter the public Client ID from your Spotify Developer app. You only need to do this once.</p>
+        <label for="spotify-client-id">Spotify Client ID</label>
+        <input id="spotify-client-id" class="text-input" type="text" inputmode="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="32-character Client ID">
+        <div class="actions"><button id="spotify-start" class="action" type="button">Connect Spotify</button><button id="spotify-setup-back" class="action secondary" type="button" hidden>Cancel</button></div>
+        <p class="spotify-note">Your app must have <strong>http://127.0.0.1:8888/callback</strong> saved as a Redirect URI.</p>
+      </div>
+      <div id="spotify-pending" hidden>
+        <ol class="steps"><li>Open Spotify in a new tab and approve access.</li><li>The browser may say it cannot open the final page. Copy the <em>entire address</em> from its address bar.</li><li>Come back to this tab, paste the address below, and finish connecting.</li></ol>
+        <a id="spotify-open" class="action" target="_blank" rel="noopener noreferrer">Open Spotify</a>
+        <label for="spotify-return">Address after Spotify sign-in</label>
+        <input id="spotify-return" class="text-input" type="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8888/callback?code=…">
+        <div class="actions"><button id="spotify-complete" class="action" type="button">Finish connection</button><button id="spotify-restart" class="action secondary" type="button">Start again</button></div>
+        <p class="spotify-note">This sign-in link expires after five minutes. Your Spotify password is never entered here.</p>
+      </div>
+    </section>
 
     <div class="section-head"><h2>Display settings</h2></div>
     <section class="settings">
@@ -103,6 +145,7 @@
     const pixels = document.createElement("canvas"); pixels.width = pixels.height = 64;
     const pixelContext = pixels.getContext("2d", {willReadFrequently: true});
     let state = null, frameBusy = false, stateBusy = false, sliderBusy = false;
+    let spotifyFlow = null, spotifyBusy = false, spotifyStatusBusy = false;
     let toastTimer;
 
     function notice(message, error = false) {
@@ -128,6 +171,49 @@
       });
       if (next.restart_required && !$("notice").classList.contains("error")) {
         notice("GPIO slowdown saved. Restart the controller on the Pi to apply it.");
+      }
+    }
+    function renderSpotifyStatus(status) {
+      const idInput = $("spotify-client-id");
+      if (document.activeElement !== idInput) idInput.value = status.client_id || "";
+      if (status.pending) spotifyFlow = "pending";
+      else if (spotifyFlow !== "change") spotifyFlow = status.connected ? "connected" : "setup";
+      if (spotifyFlow === "pending" && !status.pending) spotifyFlow = status.connected ? "connected" : "setup";
+      $("spotify-connected").hidden = spotifyFlow !== "connected";
+      $("spotify-setup").hidden = spotifyFlow !== "setup" && spotifyFlow !== "change";
+      $("spotify-pending").hidden = spotifyFlow !== "pending";
+      $("spotify-setup-back").hidden = spotifyFlow !== "change";
+      $("spotify-state").textContent = status.pending ? "Sign-in in progress" : status.connected ? "Connected" : "Not connected";
+      if (status.login_url) $("spotify-open").href = status.login_url;
+    }
+    async function readSpotifyStatus() {
+      if (spotifyStatusBusy) return;
+      spotifyStatusBusy = true;
+      try {
+        const response = await fetch("/api/spotify/status", {cache: "no-store"});
+        if (!response.ok) throw Error("Cannot read Spotify status");
+        renderSpotifyStatus(await response.json());
+      } catch (_) { $("spotify-state").textContent = "Unavailable"; }
+      finally { spotifyStatusBusy = false; }
+    }
+    async function spotifyRequest(path, method, body) {
+      if (spotifyBusy) return null;
+      spotifyBusy = true;
+      const buttons = ["spotify-start", "spotify-complete", "spotify-disconnect", "spotify-restart"];
+      buttons.forEach(id => $(id).disabled = true);
+      try {
+        const response = await fetch("/api/spotify/" + path, {
+          method, headers: {"Content-Type": "application/json"},
+          body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (!response.ok) throw Error(result.detail || "Spotify could not be connected.");
+        if ($("notice").classList.contains("error")) $("notice").className = "notice";
+        return result;
+      } catch (error) { notice(error.message, true); return null; }
+      finally {
+        spotifyBusy = false;
+        buttons.forEach(id => $(id).disabled = false);
       }
     }
     function makeScenes(names) {
@@ -206,9 +292,51 @@
     $("slowdown-plus").addEventListener("click", () => {
       if (state) update("gpio-slowdown", {gpio_slowdown: Math.min(10, state.gpio_slowdown + 1)});
     });
-    readState(); readFrame();
+    $("spotify-change").addEventListener("click", () => {
+      spotifyFlow = "change";
+      $("spotify-connected").hidden = true;
+      $("spotify-setup").hidden = false;
+      $("spotify-setup-back").hidden = false;
+      $("spotify-client-id").focus();
+    });
+    $("spotify-setup-back").addEventListener("click", () => {
+      spotifyFlow = "connected";
+      $("spotify-setup").hidden = true;
+      $("spotify-connected").hidden = false;
+    });
+    $("spotify-start").addEventListener("click", async () => {
+      const clientId = $("spotify-client-id").value.trim();
+      const result = await spotifyRequest("login/start", "POST", {client_id: clientId || null});
+      if (result) {
+        $("spotify-return").value = "";
+        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url});
+      }
+    });
+    $("spotify-restart").addEventListener("click", async () => {
+      const result = await spotifyRequest("login/start", "POST", {client_id: $("spotify-client-id").value.trim() || null});
+      if (result) {
+        $("spotify-return").value = "";
+        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url});
+      }
+    });
+    $("spotify-complete").addEventListener("click", async () => {
+      const address = $("spotify-return").value.trim();
+      const result = await spotifyRequest("login/complete", "POST", {callback_url: address});
+      if (result) {
+        $("spotify-return").value = "";
+        renderSpotifyStatus(result);
+        notice("Spotify is connected. Your music is ready for the matrix.");
+        await update("scene", {scene: "spotify"});
+      }
+    });
+    $("spotify-disconnect").addEventListener("click", async () => {
+      const result = await spotifyRequest("connection", "DELETE");
+      if (result) { spotifyFlow = null; renderSpotifyStatus(result); notice("Spotify was disconnected from this Pi."); }
+    });
+    readState(); readFrame(); readSpotifyStatus();
     setInterval(readState, 2500);
     setInterval(readFrame, 500);
+    setInterval(readSpotifyStatus, 5000);
   </script>
 </body>
 </html>

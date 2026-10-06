@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 
 from control_service import ControlService
@@ -25,6 +25,14 @@ class BrightnessChange(BaseModel):
 
 class SlowdownChange(BaseModel):
     gpio_slowdown: int
+
+
+class SpotifyLoginStart(BaseModel):
+    client_id: str | None = Field(default=None, max_length=64)
+
+
+class SpotifyLoginFinish(BaseModel):
+    callback_url: str = Field(max_length=4096)
 
 
 def create_app(service: ControlService) -> FastAPI:
@@ -69,6 +77,31 @@ def create_app(service: ControlService) -> FastAPI:
             return service.set_gpio_slowdown(change.gpio_slowdown)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/spotify/status")
+    def spotify_status() -> dict:
+        return service.spotify_status()
+
+    @app.post("/api/spotify/login/start")
+    def spotify_login_start(change: SpotifyLoginStart) -> dict:
+        try:
+            return service.start_spotify_login(change.client_id)
+        except SpotifyError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/spotify/login/complete")
+    def spotify_login_complete(change: SpotifyLoginFinish) -> dict:
+        try:
+            return service.finish_spotify_login(change.callback_url)
+        except SpotifyError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.delete("/api/spotify/connection")
+    def spotify_disconnect() -> dict:
+        try:
+            return service.disconnect_spotify()
+        except SpotifyError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     return app
 

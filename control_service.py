@@ -6,12 +6,18 @@ from dataclasses import asdict, dataclass, replace
 from io import BytesIO
 from pathlib import Path
 import json
+import secrets
 import sqlite3
 from threading import Event, RLock, Thread
+import time
 
 from PIL import Image
 
 from headless_scene import HeadlessScene
+from spotify_client import (
+    DATA_DIR as SPOTIFY_DATA_DIR, SpotifyClient, SpotifyError, authorization_url,
+    configured_client_id, phone_callback_result, pkce_pair, validate_client_id,
+)
 from weather_scene import DEFAULT_CITY
 
 
@@ -70,17 +76,27 @@ class SettingsStore:
             connection.commit()
 
 
+@dataclass(frozen=True)
+class PendingSpotifyLogin:
+    client_id: str
+    state: str
+    verifier: str
+    url: str
+    expires_at: float
+
+
 class ControlService:
     def __init__(
         self, *, hardware: bool = False, store: SettingsStore | None = None,
-        spotify_client_id: str | None = None,
+        spotify_client_id: str | None = None, spotify_data_dir: Path = SPOTIFY_DATA_DIR,
     ):
         self.store = store or SettingsStore()
         self.settings = self.store.load()
         if spotify_client_id:
-            from spotify_client import validate_client_id
-
             self.settings = replace(self.settings, spotify_client_id=validate_client_id(spotify_client_id))
+        self.spotify_data_dir = spotify_data_dir
+        self.spotify_login: PendingSpotifyLogin | None = None
+        self.spotify_login_busy = False
         self.hardware = hardware
         self.applied_gpio_slowdown = self.settings.gpio_slowdown
         self.output = None
@@ -94,7 +110,7 @@ class ControlService:
                 gpio_slowdown=self.settings.gpio_slowdown,
             )
         self.store.save(self.settings)
-        self.source = HeadlessScene(self.settings.scene_args())
+        self.source = self._new_source(self.settings)
         try:
             self.source.start()
         except Exception:
@@ -111,6 +127,20 @@ class ControlService:
 
     def start(self) -> None:
         self.thread.start()
+
+    def _new_source(self, settings: ControlSettings) -> HeadlessScene:
+        return HeadlessScene(
+            settings.scene_args(), auto_spotify_login=False,
+            spotify_data_dir=self.spotify_data_dir,
+        )
+
+    def _replace_source(self, settings: ControlSettings) -> None:
+        new_source = self._new_source(settings)
+        new_source.start()
+        self.source.close()
+        self.source = new_source
+        self.last_image = None
+        self.wake.set()
 
     def stop(self) -> None:
         self.stopping.set()
@@ -166,15 +196,80 @@ class ControlService:
             if scene == self.settings.scene:
                 return self.state()
             new_settings = replace(self.settings, scene=scene)
-            new_source = HeadlessScene(new_settings.scene_args())
-            new_source.start()
-            self.source.close()
-            self.source = new_source
+            self._replace_source(new_settings)
             self.settings = new_settings
             self.store.save(self.settings)
-            self.last_image = None
-            self.wake.set()
             return self.state()
+
+    def _spotify_client_id(self) -> str:
+        return self.settings.spotify_client_id or configured_client_id()
+
+    def spotify_status(self) -> dict:
+        with self.lock:
+            client_id = self._spotify_client_id()
+            token = SpotifyClient(client_id, self.spotify_data_dir).token if client_id else {}
+            pending = self.spotify_login is not None and time.monotonic() < self.spotify_login.expires_at
+            return {
+                "client_id": client_id, "connected": bool(token), "pending": pending,
+                "login_url": self.spotify_login.url if pending else None,
+            }
+
+    def start_spotify_login(self, client_id: str | None = None) -> dict:
+        with self.lock:
+            if self.spotify_login_busy:
+                raise SpotifyError("A Spotify sign-in is already finishing. Please wait a moment.")
+            chosen = validate_client_id(client_id or self._spotify_client_id())
+            if chosen != self.settings.spotify_client_id:
+                new_settings = replace(self.settings, spotify_client_id=chosen)
+                if self.settings.scene == "spotify":
+                    self._replace_source(new_settings)
+                self.settings = new_settings
+                self.store.save(self.settings)
+            verifier, challenge = pkce_pair()
+            state = secrets.token_urlsafe(32)
+            url = authorization_url(chosen, challenge, state)
+            self.spotify_login = PendingSpotifyLogin(chosen, state, verifier, url, time.monotonic() + 300)
+            return {"url": url, "client_id": chosen}
+
+    def finish_spotify_login(self, callback_url: str) -> dict:
+        with self.lock:
+            pending = self.spotify_login
+            if pending is None or time.monotonic() >= pending.expires_at:
+                self.spotify_login = None
+                raise SpotifyError("This sign-in has expired. Start a new Spotify sign-in.")
+            if self.spotify_login_busy:
+                raise SpotifyError("A Spotify sign-in is already finishing. Please wait a moment.")
+            code, error = phone_callback_result(callback_url, pending.state)
+            if error:
+                self.spotify_login = None
+                raise SpotifyError("Spotify sign-in was cancelled. You can try again.")
+            if not code:
+                raise SpotifyError("That Spotify return address has no authorization code.")
+            self.spotify_login_busy = True
+
+        try:
+            SpotifyClient(pending.client_id, self.spotify_data_dir).exchange_code(code, pending.verifier)
+        except Exception:
+            with self.lock:
+                self.spotify_login = None
+                self.spotify_login_busy = False
+            raise
+        with self.lock:
+            self.spotify_login = None
+            self.spotify_login_busy = False
+            if self.settings.scene == "spotify":
+                self._replace_source(self.settings)
+            return self.spotify_status()
+
+    def disconnect_spotify(self) -> dict:
+        with self.lock:
+            if self.spotify_login_busy:
+                raise SpotifyError("A Spotify sign-in is finishing. Please wait a moment.")
+            self.spotify_login = None
+            (self.spotify_data_dir / "tokens.json").unlink(missing_ok=True)
+            if self.settings.scene == "spotify":
+                self._replace_source(self.settings)
+            return self.spotify_status()
 
     def set_brightness(self, brightness: int) -> dict:
         if not 1 <= brightness <= 100:
