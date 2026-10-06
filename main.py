@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from clock_face import draw_clock
 from eyes_scene import EyesAnimator, EyesPose, render_eyes_frame
 from headless_scene import circle_frame
+from kintsugi_scene import KintsugiAnimator, render_kintsugi_frame, stage_name
 from moon_scene import illumination, moon_phase, nighttime_reference, phase_name, render_moon_frame
 from spotify_client import SpotifyClient, SpotifyError, configured_client_id, save_client_id, validate_client_id
 from spotify_scene import (
@@ -76,6 +77,7 @@ class MatrixEmulator:
         weather_city: str = DEFAULT_CITY,
         weather_demo: str | None = None,
         weather_hour: int = 13,
+        kintsugi_theme: str = "indigo", kintsugi_speed: int = 100, kintsugi_density: int = 50,
     ) -> None:
         # Keep desktop imports out of the image-rendering path.
         import tkinter as tk
@@ -90,6 +92,10 @@ class MatrixEmulator:
         self._weather_error = ""
         self.eyes_animator = EyesAnimator(time.monotonic()) if scene == "eyes" else None
         self.walk_started = time.monotonic()
+        self.kintsugi = KintsugiAnimator(time.monotonic()) if scene == "kintsugi" else None
+        self.kintsugi_theme = kintsugi_theme
+        self.kintsugi_speed = kintsugi_speed
+        self.kintsugi_density = kintsugi_density
         self.weather_city = weather_city
         self.weather_demo = weather_demo
         self.weather_demo_hour = weather_hour
@@ -123,8 +129,10 @@ class MatrixEmulator:
         self.root.bind("p", lambda _event: self.toggle_progress())
         self.root.bind("v", lambda _event: self.cycle_spotify_style())
         self.root.bind("h", lambda _event: self.toggle_drift_cover())
-        self.root.bind("-", lambda _event: self.adjust_drift_blackness(5))
-        self.root.bind("=", lambda _event: self.adjust_drift_blackness(-5))
+        self.root.bind("-", lambda _event: self.adjust_kintsugi(speed=-25) if self.scene == "kintsugi" else self.adjust_drift_blackness(5))
+        self.root.bind("=", lambda _event: self.adjust_kintsugi(speed=25) if self.scene == "kintsugi" else self.adjust_drift_blackness(-5))
+        self.root.bind("[", lambda _event: self.adjust_kintsugi(density=-10))
+        self.root.bind("]", lambda _event: self.adjust_kintsugi(density=10))
         self.root.bind("d", lambda _event: self.cycle_on_d())
 
         self.display = tk.Label(self.root, background="#080a0e", borderwidth=0)
@@ -349,7 +357,7 @@ class MatrixEmulator:
         self.refresh_weather_display()
 
     def cycle_on_d(self) -> None:
-        if self.scene in ("eyes", "walker"):
+        if self.scene in ("eyes", "walker", "kintsugi"):
             self.cycle_animation()
         else:
             self.cycle_weather_demo()
@@ -359,6 +367,9 @@ class MatrixEmulator:
             self.scene = "walker"
             self.walk_started = time.monotonic()
         elif self.scene == "walker":
+            self.scene = "kintsugi"
+            self.kintsugi = KintsugiAnimator(time.monotonic())
+        elif self.scene == "kintsugi":
             self.scene = "eyes"
             self.eyes_animator = EyesAnimator(time.monotonic())
         else:
@@ -411,23 +422,41 @@ class MatrixEmulator:
     def toggle_theme(self) -> None:
         if self.scene == "clock":
             self.theme = "dark" if self.theme == "light" else "light"
+        elif self.scene == "kintsugi":
+            self.kintsugi_theme = "ivory" if self.kintsugi_theme == "indigo" else "indigo"
+
+    def adjust_kintsugi(self, *, speed: int = 0, density: int = 0) -> None:
+        if self.scene == "kintsugi":
+            self.kintsugi_speed = min(300, max(25, self.kintsugi_speed + speed))
+            self.kintsugi_density = min(100, max(20, self.kintsugi_density + density))
 
     def reset_hands(self) -> None:
         if self.scene == "clock":
             self.hand_length_percent = 100
             self.hand_width_percent = 100
+        elif self.scene == "kintsugi":
+            self.kintsugi = KintsugiAnimator(time.monotonic())
 
     def update(self) -> None:
-        if self.scene in ("eyes", "walker"):
+        if self.scene in ("eyes", "walker", "kintsugi"):
             now = time.monotonic()
             if self.scene == "eyes":
                 frame = render_eyes_frame(self.eyes_animator.pose(now))
                 caption = "EYES · D: WALKER"
-            else:
+            elif self.scene == "walker":
                 phase = 2 * math.pi * (now - self.walk_started) / STEP_SECONDS
                 frame = render_walker_frame(phase)
-                caption = "WALKER · D: EYES"
-            key = frame.tobytes()
+                caption = "WALKER · D: KINTSUGI"
+            else:
+                frame = self.kintsugi.frame(
+                    now, theme=self.kintsugi_theme, speed=self.kintsugi_speed, density=self.kintsugi_density,
+                )
+                caption = (
+                    f"KINTSUGI · {stage_name(self.kintsugi.phase)} · L: {self.kintsugi_theme.upper()}"
+                    f"\n-/=: PACE {self.kintsugi_speed}% · [/]: DENSITY {self.kintsugi_density}%"
+                    "\nR: NEW TILE · D: EYES"
+                )
+            key = (frame.tobytes(), caption)
             if key != self._last_frame_key:
                 self.show(frame)
                 self.caption.configure(text=caption)
@@ -513,7 +542,10 @@ def main() -> None:
     parser.add_argument(
         "--snapshot", type=Path, metavar="PNG", help="Save the LED preview without opening a window."
     )
-    parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker"), default="clock")
+    parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi"), default="clock")
+    parser.add_argument("--kintsugi-theme", choices=("indigo", "ivory"), default="indigo")
+    parser.add_argument("--kintsugi-speed", type=int, default=100, help="Kintsugi pace, 25–300 percent.")
+    parser.add_argument("--kintsugi-density", type=int, default=50, help="Kintsugi crack density, 20–100 percent.")
     parser.add_argument("--time", metavar="HH:MM:SS", help="Freeze the clock at a chosen time.")
     parser.add_argument("--no-numbers", action="store_true", help="Hide the clock numerals.")
     parser.add_argument("--no-ticks", action="store_true", help="Hide the clock tick marks.")
@@ -558,6 +590,10 @@ def main() -> None:
         help="Starting demo hour from 0 to 23 (default: 13); Left/Right changes it in the window.",
     )
     args = parser.parse_args()
+    if not 25 <= args.kintsugi_speed <= 300:
+        parser.error("--kintsugi-speed must be between 25 and 300.")
+    if not 20 <= args.kintsugi_density <= 100:
+        parser.error("--kintsugi-density must be between 20 and 100.")
     if not 0 <= args.drift_blackness <= 100:
         parser.error("--drift-blackness must be between 0 and 100.")
     if not 0 <= args.weather_hour <= 23:
@@ -604,6 +640,8 @@ def main() -> None:
             frame = render_eyes_frame(EyesPose())
         elif args.scene == "walker":
             frame = render_walker_frame(math.pi / 2)
+        elif args.scene == "kintsugi":
+            frame = render_kintsugi_frame(.64, theme=args.kintsugi_theme, density=args.kintsugi_density)
         else:
             frame = draw_circle() if args.scene == "circle" else draw_clock(
                 fixed_time, show_numbers=not args.no_numbers, show_ticks=not args.no_ticks,
@@ -633,6 +671,8 @@ def main() -> None:
         weather_city=args.weather_city,
         weather_demo=args.weather_demo,
         weather_hour=args.weather_hour,
+        kintsugi_theme=args.kintsugi_theme, kintsugi_speed=args.kintsugi_speed,
+        kintsugi_density=args.kintsugi_density,
     )
     emulator.run()
 

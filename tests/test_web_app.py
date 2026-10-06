@@ -44,6 +44,7 @@ class WebAppTests(unittest.TestCase):
                     self.assertIn('id="spotify-style"', page.text)
                     self.assertIn('id="weather-mode"', page.text)
                     self.assertIn('id="eyes-movement-rate"', page.text)
+                    self.assertIn('id="kintsugi-theme"', page.text)
                     self.assertEqual(client.get("/api/state").json()["scene"], "clock")
                     scene = client.put("/api/scene", json={"scene": "circle"})
                     self.assertEqual(scene.status_code, 200)
@@ -76,6 +77,13 @@ class WebAppTests(unittest.TestCase):
                     with patch("headless_scene.configured_client_id", return_value=""):
                         self.assertEqual(client.put("/api/scene", json={"scene": "spotify"}).status_code, 409)
                     self.assertEqual(client.get("/api/state").json()["scene"], "circle")
+                    ceramic = client.put("/api/scene", json={"scene": "kintsugi"})
+                    self.assertEqual(ceramic.status_code, 200)
+                    finish = client.put("/api/scene-options", json={
+                        "scene": "kintsugi", "changes": {"kintsugi_theme": "ivory", "kintsugi_speed": 200},
+                    })
+                    self.assertEqual(finish.status_code, 200)
+                    self.assertEqual(finish.json()["kintsugi_theme"], "ivory")
             finally:
                 service.stop()
 

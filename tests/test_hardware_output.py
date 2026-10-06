@@ -68,7 +68,7 @@ class HardwareOutputTests(unittest.TestCase):
             weather_hour=23, no_progress=False, spotify_style="vinyl-spin",
             no_drift_cover=False, drift_blackness=35,
         )
-        for name in ("clock", "moon", "eyes", "walker", "weather", "spotify"):
+        for name in ("clock", "moon", "eyes", "walker", "weather", "spotify", "kintsugi"):
             with self.subTest(scene=name):
                 frame, _ = HeadlessScene(Namespace(scene=name, **base)).frame()
                 self.assertEqual((frame.mode, frame.size), ("RGB", (64, 64)))

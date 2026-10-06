@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from clock_face import draw_clock
 from eyes_scene import EyesAnimator, render_eyes_frame
+from kintsugi_scene import KintsugiAnimator, stage_name
 from moon_scene import nighttime_reference, moon_phase, render_moon_frame
 from spotify_client import DATA_DIR as SPOTIFY_DATA_DIR, SpotifyClient, SpotifyError, configured_client_id, validate_client_id
 from spotify_scene import SpotifyView, SpotifyWorker, render_spotify_frame, waiting_frame
@@ -31,6 +32,7 @@ class HeadlessScene:
         self.auto_spotify_login = auto_spotify_login
         self.spotify_data_dir = spotify_data_dir or SPOTIFY_DATA_DIR
         self.started = time.monotonic()
+        self.kintsugi = KintsugiAnimator(self.started) if args.scene == "kintsugi" else None
         self.eyes = EyesAnimator(
             self.started,
             movement_rate=getattr(args, "eyes_movement_rate", 100) / 100,
@@ -44,6 +46,7 @@ class HeadlessScene:
         self.interval = {
             "eyes": .05, "walker": .05, "spotify": .1, "weather": .1,
             "clock": .1, "moon": 60, "circle": 1,
+            "kintsugi": .1,
         }[args.scene]
 
     def start(self) -> None:
@@ -90,6 +93,13 @@ class HeadlessScene:
         if args.scene == "walker":
             phase = 2 * math.pi * (now - self.started) / STEP_SECONDS
             return render_walker_frame(phase), "Walker"
+        if args.scene == "kintsugi":
+            frame = self.kintsugi.frame(
+                now, theme=getattr(args, "kintsugi_theme", "indigo"),
+                speed=getattr(args, "kintsugi_speed", 100),
+                density=getattr(args, "kintsugi_density", 50),
+            )
+            return frame, f"Kintsugi · {stage_name(self.kintsugi.phase)}"
         if args.scene == "weather":
             if self.weather_worker is not None:
                 update = self.weather_worker.latest()

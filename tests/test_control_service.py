@@ -125,6 +125,16 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertIs(service.source.eyes, animator)
                 self.assertEqual(animator.movement_rate, 2)
                 self.assertEqual(animator.blink_rate, 0.5)
+                service.select_scene("kintsugi")
+                ceramic = service.source.kintsugi
+                service.set_scene_options("kintsugi", {
+                    "kintsugi_theme": "ivory", "kintsugi_speed": 175, "kintsugi_density": 80,
+                })
+                frame, caption = service.source.frame()
+                self.assertIs(service.source.kintsugi, ceramic)
+                self.assertEqual(frame.size, (64, 64))
+                self.assertTrue(caption.startswith("Kintsugi"))
+                self.assertEqual(ceramic.speed, 175)
             finally:
                 service.stop()
 
@@ -135,6 +145,10 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(restarted.state()["weather_demo"], "rain")
                 self.assertEqual(restarted.state()["eyes_movement_rate"], 200)
                 self.assertEqual(restarted.state()["eyes_blink_rate"], 50)
+                self.assertEqual(restarted.state()["scene"], "kintsugi")
+                self.assertEqual(restarted.state()["kintsugi_theme"], "ivory")
+                self.assertEqual(restarted.state()["kintsugi_speed"], 175)
+                self.assertEqual(restarted.state()["kintsugi_density"], 80)
             finally:
                 restarted.stop()
 
@@ -152,6 +166,9 @@ class ControlServiceTests(unittest.TestCase):
                     ("spotify", {"drift_blackness": -1}),
                     ("eyes", {"eyes_movement_rate": 0}),
                     ("eyes", {"eyes_blink_rate": 301}),
+                    ("kintsugi", {"kintsugi_theme": "blue"}),
+                    ("kintsugi", {"kintsugi_density": 10}),
+                    ("kintsugi", {"kintsugi_speed": 0}),
                     ("moon", {"theme": "dark"}),
                     ("clock", {"theme": "dark", "no_ticks": 1}),
                 ):

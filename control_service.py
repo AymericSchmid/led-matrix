@@ -23,12 +23,13 @@ from spotify_scene import SPOTIFY_STYLES
 from weather_scene import DEFAULT_CITY, DEMO_WEATHERS
 
 
-SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker")
+SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi")
 SCENE_OPTIONS = {
     "clock": frozenset(("theme", "no_numbers", "no_ticks", "hand_length_percent", "hand_width_percent")),
     "spotify": frozenset(("spotify_style", "no_progress", "no_drift_cover", "drift_blackness")),
     "weather": frozenset(("weather_city", "weather_demo", "weather_hour")),
     "eyes": frozenset(("eyes_movement_rate", "eyes_blink_rate")),
+    "kintsugi": frozenset(("kintsugi_theme", "kintsugi_speed", "kintsugi_density")),
 }
 DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 
@@ -52,6 +53,9 @@ class ControlSettings:
     weather_hour: int = 13
     eyes_movement_rate: int = 100
     eyes_blink_rate: int = 100
+    kintsugi_theme: str = "indigo"
+    kintsugi_speed: int = 100
+    kintsugi_density: int = 50
     spotify_client_id: str | None = None
 
     def scene_args(self) -> Namespace:
@@ -230,16 +234,20 @@ class ControlService:
             elif key in (
                 "hand_length_percent", "hand_width_percent", "drift_blackness", "weather_hour",
                 "eyes_movement_rate", "eyes_blink_rate",
+                "kintsugi_speed", "kintsugi_density",
             ):
                 limits = {
                     "hand_length_percent": (60, 130), "hand_width_percent": (50, 250),
                     "drift_blackness": (0, 100), "weather_hour": (0, 23),
                     "eyes_movement_rate": (25, 300), "eyes_blink_rate": (25, 300),
+                    "kintsugi_speed": (25, 300), "kintsugi_density": (20, 100),
                 }
                 lower, upper = limits[key]
                 valid = type(value) is int and lower <= value <= upper
             elif key == "theme":
                 valid = value in ("light", "dark")
+            elif key == "kintsugi_theme":
+                valid = value in ("indigo", "ivory")
             elif key == "spotify_style":
                 valid = value in SPOTIFY_STYLES
             elif key == "weather_demo":

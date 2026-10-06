@@ -124,6 +124,11 @@
         <div class="setting"><div class="setting-header"><label for="eyes-movement-rate">Gaze movement</label><output id="eyes-movement-rate-value">100%</output></div><input id="eyes-movement-rate" type="range" min="25" max="300" step="25"><p>How often and how quickly the eyes look around. 100% is the original pace.</p></div>
         <div class="setting"><div class="setting-header"><label for="eyes-blink-rate">Blink frequency</label><output id="eyes-blink-rate-value">100%</output></div><input id="eyes-blink-rate" type="range" min="25" max="300" step="25"><p>How often the eyes blink. The blink itself stays natural.</p></div>
       </div>
+      <div id="kintsugi-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="kintsugi-theme">Ceramic finish</label></div><select id="kintsugi-theme"><option value="indigo">Deep indigo · gold</option><option value="ivory">Warm ivory · gold</option></select></div>
+        <div class="setting"><div class="setting-header"><label for="kintsugi-speed">Pace</label><output id="kintsugi-speed-value">100%</output></div><input id="kintsugi-speed" type="range" min="25" max="300" step="25"><p>At 100%, each fracture and repair takes about a minute.</p></div>
+        <div class="setting"><div class="setting-header"><label for="kintsugi-density">Crack density</label><output id="kintsugi-density-value">50%</output></div><input id="kintsugi-density" type="range" min="20" max="100" step="10"><p>From a few large pieces to a web of fine seams. Changing density starts a new tile.</p></div>
+      </div>
       <p id="empty-options" class="empty-options" hidden>This scene has no appearance settings yet.</p>
     </section>
 
@@ -168,7 +173,7 @@
     const sceneNames = {
       clock: ["Clock", "◷"], circle: ["Circle", "◯"], spotify: ["Spotify", "♫"],
       weather: ["Weather glass", "☀"], moon: ["Moon", "☾"],
-      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"]
+      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"], kintsugi: ["Kintsugi", "◇"]
     };
     const $ = id => document.getElementById(id);
     const canvas = $("preview"), context = canvas.getContext("2d", {willReadFrequently: false});
@@ -207,8 +212,8 @@
     function renderSceneOptions(next) {
       const scene = next.scene;
       $("scene-options-title").textContent = (sceneNames[scene]?.[0] || scene) + " settings";
-      for (const name of ["clock", "spotify", "weather", "eyes"]) $(name + "-options").hidden = scene !== name;
-      $("empty-options").hidden = ["clock", "spotify", "weather", "eyes"].includes(scene);
+      for (const name of ["clock", "spotify", "weather", "eyes", "kintsugi"]) $(name + "-options").hidden = scene !== name;
+      $("empty-options").hidden = ["clock", "spotify", "weather", "eyes", "kintsugi"].includes(scene);
       if (scene === "clock") {
         $("clock-theme").value = next.theme;
         $("clock-numbers").checked = !next.no_numbers;
@@ -242,6 +247,14 @@
         }
         $("eyes-movement-rate-value").textContent = $("eyes-movement-rate").value + "%";
         $("eyes-blink-rate-value").textContent = $("eyes-blink-rate").value + "%";
+      } else if (scene === "kintsugi") {
+        $("kintsugi-theme").value = next.kintsugi_theme;
+        if (!sceneSliderBusy) {
+          $("kintsugi-speed").value = next.kintsugi_speed;
+          $("kintsugi-density").value = next.kintsugi_density;
+        }
+        $("kintsugi-speed-value").textContent = $("kintsugi-speed").value + "%";
+        $("kintsugi-density-value").textContent = $("kintsugi-density").value + "%";
       }
     }
     function setSceneOption(key, value) {
@@ -389,6 +402,9 @@
     bindSceneSlider("weather-hour", "weather_hour", value => String(value).padStart(2, "0") + ":00");
     bindSceneSlider("eyes-movement-rate", "eyes_movement_rate", value => value + "%");
     bindSceneSlider("eyes-blink-rate", "eyes_blink_rate", value => value + "%");
+    $("kintsugi-theme").addEventListener("change", event => setSceneOption("kintsugi_theme", event.target.value));
+    bindSceneSlider("kintsugi-speed", "kintsugi_speed", value => value + "%");
+    bindSceneSlider("kintsugi-density", "kintsugi_density", value => value + "%");
     $("brightness").addEventListener("change", async event => {
       await update("brightness", {brightness: Number(event.target.value)});
       sliderBusy = false;
