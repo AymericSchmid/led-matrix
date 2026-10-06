@@ -135,6 +135,13 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(frame.size, (64, 64))
                 self.assertTrue(caption.startswith("Kintsugi"))
                 self.assertEqual(ceramic.speed, 175)
+                service.select_scene("shadow")
+                apparition = service.source.shadow
+                service.set_scene_options("shadow", {"shadow_speed": 150, "shadow_intensity": 80})
+                frame, caption = service.source.frame()
+                self.assertIs(service.source.shadow, apparition)
+                self.assertEqual(frame.size, (64, 64))
+                self.assertTrue(caption.startswith("Impossible shadow"))
             finally:
                 service.stop()
 
@@ -145,10 +152,13 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(restarted.state()["weather_demo"], "rain")
                 self.assertEqual(restarted.state()["eyes_movement_rate"], 200)
                 self.assertEqual(restarted.state()["eyes_blink_rate"], 50)
-                self.assertEqual(restarted.state()["scene"], "kintsugi")
+                self.assertEqual(restarted.state()["scene"], "shadow")
                 self.assertEqual(restarted.state()["kintsugi_theme"], "ivory")
                 self.assertEqual(restarted.state()["kintsugi_speed"], 175)
                 self.assertEqual(restarted.state()["kintsugi_density"], 80)
+                self.assertEqual(restarted.state()["scene"], "shadow")
+                self.assertEqual(restarted.state()["shadow_speed"], 150)
+                self.assertEqual(restarted.state()["shadow_intensity"], 80)
             finally:
                 restarted.stop()
 
@@ -169,6 +179,8 @@ class ControlServiceTests(unittest.TestCase):
                     ("kintsugi", {"kintsugi_theme": "blue"}),
                     ("kintsugi", {"kintsugi_density": 10}),
                     ("kintsugi", {"kintsugi_speed": 0}),
+                    ("shadow", {"shadow_speed": 201}),
+                    ("shadow", {"shadow_intensity": 24}),
                     ("moon", {"theme": "dark"}),
                     ("clock", {"theme": "dark", "no_ticks": 1}),
                 ):

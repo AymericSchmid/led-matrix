@@ -45,6 +45,7 @@ class WebAppTests(unittest.TestCase):
                     self.assertIn('id="weather-mode"', page.text)
                     self.assertIn('id="eyes-movement-rate"', page.text)
                     self.assertIn('id="kintsugi-theme"', page.text)
+                    self.assertIn('id="shadow-speed"', page.text)
                     self.assertEqual(client.get("/api/state").json()["scene"], "clock")
                     scene = client.put("/api/scene", json={"scene": "circle"})
                     self.assertEqual(scene.status_code, 200)
@@ -84,6 +85,13 @@ class WebAppTests(unittest.TestCase):
                     })
                     self.assertEqual(finish.status_code, 200)
                     self.assertEqual(finish.json()["kintsugi_theme"], "ivory")
+                    shadow = client.put("/api/scene", json={"scene": "shadow"})
+                    self.assertEqual(shadow.status_code, 200)
+                    options = client.put("/api/scene-options", json={
+                        "scene": "shadow", "changes": {"shadow_speed": 150, "shadow_intensity": 80},
+                    })
+                    self.assertEqual(options.status_code, 200)
+                    self.assertEqual(options.json()["shadow_intensity"], 80)
             finally:
                 service.stop()
 

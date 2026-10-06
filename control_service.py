@@ -23,13 +23,14 @@ from spotify_scene import SPOTIFY_STYLES
 from weather_scene import DEFAULT_CITY, DEMO_WEATHERS
 
 
-SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi")
+SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi", "shadow")
 SCENE_OPTIONS = {
     "clock": frozenset(("theme", "no_numbers", "no_ticks", "hand_length_percent", "hand_width_percent")),
     "spotify": frozenset(("spotify_style", "no_progress", "no_drift_cover", "drift_blackness")),
     "weather": frozenset(("weather_city", "weather_demo", "weather_hour")),
     "eyes": frozenset(("eyes_movement_rate", "eyes_blink_rate")),
     "kintsugi": frozenset(("kintsugi_theme", "kintsugi_speed", "kintsugi_density")),
+    "shadow": frozenset(("shadow_speed", "shadow_intensity")),
 }
 DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 
@@ -56,6 +57,8 @@ class ControlSettings:
     kintsugi_theme: str = "indigo"
     kintsugi_speed: int = 100
     kintsugi_density: int = 50
+    shadow_speed: int = 100
+    shadow_intensity: int = 100
     spotify_client_id: str | None = None
 
     def scene_args(self) -> Namespace:
@@ -235,12 +238,14 @@ class ControlService:
                 "hand_length_percent", "hand_width_percent", "drift_blackness", "weather_hour",
                 "eyes_movement_rate", "eyes_blink_rate",
                 "kintsugi_speed", "kintsugi_density",
+                "shadow_speed", "shadow_intensity",
             ):
                 limits = {
                     "hand_length_percent": (60, 130), "hand_width_percent": (50, 250),
                     "drift_blackness": (0, 100), "weather_hour": (0, 23),
                     "eyes_movement_rate": (25, 300), "eyes_blink_rate": (25, 300),
                     "kintsugi_speed": (25, 300), "kintsugi_density": (20, 100),
+                    "shadow_speed": (25, 200), "shadow_intensity": (25, 100),
                 }
                 lower, upper = limits[key]
                 valid = type(value) is int and lower <= value <= upper

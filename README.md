@@ -125,7 +125,7 @@ python main.py --scene eyes --snapshot .preview/eyes-idle.png
 python main.py --scene walker --snapshot .preview/walker.png
 ```
 
-Press **D** to cycle through eyes, walker, and kintsugi. Pale green eyes stare out of a nearly black face, shifting their gaze at irregular intervals and blinking independently or together. The walker is seen from the side, heading left through a dim night street. A moonlit coat, warm scarf, alternating steps, and ground drifting to the right give the small silhouette its motion. These animations run entirely offline.
+Press **D** to cycle through eyes, walker, kintsugi, and the impossible shadow. Pale green eyes stare out of a nearly black face, shifting their gaze at irregular intervals and blinking independently or together. The walker is seen from the side, heading left through a dim night street. A moonlit coat, warm scarf, alternating steps, and ground drifting to the right give the small silhouette its motion. These animations run entirely offline.
 
 ## Living kintsugi
 
@@ -139,6 +139,16 @@ python main.py --scene kintsugi --snapshot .preview/kintsugi.png
 A glazed ceramic surface fractures into irregular pieces. Gold slowly fills the connected seams, catches a moving reflection, and rests before the surface becomes whole again. A fresh pattern follows each 72-second cycle at the default pace. The artwork is generated locally with Pillow, with no downloaded images or network requests.
 
 The phone controller has **Ceramic finish** (indigo or ivory), **Pace** (25–300%), and **Crack density** (20–100%) controls. Settings persist. Changing pace preserves the current repair; changing density starts a new tile. In the emulator, **L** switches finish, **− / =** adjusts pace, **[ / ]** adjusts density, **R** starts a fresh tile, and **D** switches to eyes. The same options work with `--output matrix` on the Pi. Snapshots show the fully gilded tile.
+
+## Impossible shadow
+
+```sh
+python main.py --scene shadow
+python main.py --scene shadow --shadow-speed 70 --shadow-intensity 100
+python main.py --scene shadow --snapshot .preview/shadow.png
+```
+
+The room is fixed: a cold window, an open door, and an empty chair. A shadow climbs up from the chair, reaches toward the viewer, pauses, and reveals two small eyes before returning to the floor. The scene is generated locally and loops in 48 seconds. The phone controller exposes **Pace** and **Uncanny presence**. In the emulator, **↑ / ↓** changes pace, **← / →** changes presence, **R** restarts the apparition, and **D** returns to eyes.
 
 ## Moon
 

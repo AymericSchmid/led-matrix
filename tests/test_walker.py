@@ -25,7 +25,7 @@ class WalkerTests(unittest.TestCase):
         self.assertGreater(scarf[0], scarf[2] + 80)
         self.assertGreater(sum(first.getpixel((20, 59))), 500)
 
-    def test_d_cycles_eyes_walker_and_kintsugi(self):
+    def test_d_cycles_eyes_walker_kintsugi_and_shadow(self):
         app = MatrixEmulator.__new__(MatrixEmulator)
         app.scene = "eyes"
         app._last_frame_key = b"old frame"
@@ -35,6 +35,9 @@ class WalkerTests(unittest.TestCase):
         app.cycle_on_d()
         self.assertEqual(app.scene, "kintsugi")
         self.assertIsNotNone(app.kintsugi)
+        app.cycle_on_d()
+        self.assertEqual(app.scene, "shadow")
+        self.assertIsNotNone(app.shadow)
         app.cycle_on_d()
         self.assertEqual(app.scene, "eyes")
         self.assertIsNotNone(app.eyes_animator)

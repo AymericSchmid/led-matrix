@@ -12,6 +12,7 @@ from clock_face import draw_clock
 from eyes_scene import EyesAnimator, EyesPose, render_eyes_frame
 from headless_scene import circle_frame
 from kintsugi_scene import KintsugiAnimator, render_kintsugi_frame, stage_name
+from shadow_scene import ShadowAnimator, render_shadow_frame
 from moon_scene import illumination, moon_phase, nighttime_reference, phase_name, render_moon_frame
 from spotify_client import SpotifyClient, SpotifyError, configured_client_id, save_client_id, validate_client_id
 from spotify_scene import (
@@ -78,6 +79,7 @@ class MatrixEmulator:
         weather_demo: str | None = None,
         weather_hour: int = 13,
         kintsugi_theme: str = "indigo", kintsugi_speed: int = 100, kintsugi_density: int = 50,
+        shadow_speed: int = 100, shadow_intensity: int = 100,
     ) -> None:
         # Keep desktop imports out of the image-rendering path.
         import tkinter as tk
@@ -96,6 +98,9 @@ class MatrixEmulator:
         self.kintsugi_theme = kintsugi_theme
         self.kintsugi_speed = kintsugi_speed
         self.kintsugi_density = kintsugi_density
+        self.shadow = ShadowAnimator(time.monotonic()) if scene == "shadow" else None
+        self.shadow_speed = shadow_speed
+        self.shadow_intensity = shadow_intensity
         self.weather_city = weather_city
         self.weather_demo = weather_demo
         self.weather_demo_hour = weather_hour
@@ -357,7 +362,7 @@ class MatrixEmulator:
         self.refresh_weather_display()
 
     def cycle_on_d(self) -> None:
-        if self.scene in ("eyes", "walker", "kintsugi"):
+        if self.scene in ("eyes", "walker", "kintsugi", "shadow"):
             self.cycle_animation()
         else:
             self.cycle_weather_demo()
@@ -370,6 +375,9 @@ class MatrixEmulator:
             self.scene = "kintsugi"
             self.kintsugi = KintsugiAnimator(time.monotonic())
         elif self.scene == "kintsugi":
+            self.scene = "shadow"
+            self.shadow = ShadowAnimator(time.monotonic())
+        elif self.scene == "shadow":
             self.scene = "eyes"
             self.eyes_animator = EyesAnimator(time.monotonic())
         else:
@@ -418,6 +426,9 @@ class MatrixEmulator:
             # Keep even the longest, boldest hands inside the physical panel.
             self.hand_length_percent = min(130, max(60, self.hand_length_percent + length))
             self.hand_width_percent = min(250, max(50, self.hand_width_percent + width))
+        elif self.scene == "shadow":
+            self.shadow_intensity = min(100, max(25, self.shadow_intensity + length))
+            self.shadow_speed = min(200, max(25, self.shadow_speed + width))
 
     def toggle_theme(self) -> None:
         if self.scene == "clock":
@@ -436,9 +447,11 @@ class MatrixEmulator:
             self.hand_width_percent = 100
         elif self.scene == "kintsugi":
             self.kintsugi = KintsugiAnimator(time.monotonic())
+        elif self.scene == "shadow":
+            self.shadow = ShadowAnimator(time.monotonic())
 
     def update(self) -> None:
-        if self.scene in ("eyes", "walker", "kintsugi"):
+        if self.scene in ("eyes", "walker", "kintsugi", "shadow"):
             now = time.monotonic()
             if self.scene == "eyes":
                 frame = render_eyes_frame(self.eyes_animator.pose(now))
@@ -447,14 +460,21 @@ class MatrixEmulator:
                 phase = 2 * math.pi * (now - self.walk_started) / STEP_SECONDS
                 frame = render_walker_frame(phase)
                 caption = "WALKER · D: KINTSUGI"
-            else:
+            elif self.scene == "kintsugi":
                 frame = self.kintsugi.frame(
                     now, theme=self.kintsugi_theme, speed=self.kintsugi_speed, density=self.kintsugi_density,
                 )
                 caption = (
                     f"KINTSUGI · {stage_name(self.kintsugi.phase)} · L: {self.kintsugi_theme.upper()}"
                     f"\n-/=: PACE {self.kintsugi_speed}% · [/]: DENSITY {self.kintsugi_density}%"
-                    "\nR: NEW TILE · D: EYES"
+                    "\nR: NEW TILE · D: SHADOW"
+                )
+            else:
+                frame = self.shadow.frame(now, speed=self.shadow_speed, intensity=self.shadow_intensity)
+                caption = (
+                    "IMPOSSIBLE SHADOW"
+                    f"\n↑/↓: PACE {self.shadow_speed}% · ←/→: UNEASE {self.shadow_intensity}%"
+                    "\nR: RESTART · D: EYES"
                 )
             key = (frame.tobytes(), caption)
             if key != self._last_frame_key:
@@ -542,7 +562,9 @@ def main() -> None:
     parser.add_argument(
         "--snapshot", type=Path, metavar="PNG", help="Save the LED preview without opening a window."
     )
-    parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi"), default="clock")
+    parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi", "shadow"), default="clock")
+    parser.add_argument("--shadow-speed", type=int, default=100, help="Shadow animation pace, 25–200 percent.")
+    parser.add_argument("--shadow-intensity", type=int, default=100, help="Shadow distortion and approach, 25–100 percent.")
     parser.add_argument("--kintsugi-theme", choices=("indigo", "ivory"), default="indigo")
     parser.add_argument("--kintsugi-speed", type=int, default=100, help="Kintsugi pace, 25–300 percent.")
     parser.add_argument("--kintsugi-density", type=int, default=50, help="Kintsugi crack density, 20–100 percent.")
@@ -590,6 +612,10 @@ def main() -> None:
         help="Starting demo hour from 0 to 23 (default: 13); Left/Right changes it in the window.",
     )
     args = parser.parse_args()
+    if not 25 <= args.shadow_speed <= 200:
+        parser.error("--shadow-speed must be between 25 and 200.")
+    if not 25 <= args.shadow_intensity <= 100:
+        parser.error("--shadow-intensity must be between 25 and 100.")
     if not 25 <= args.kintsugi_speed <= 300:
         parser.error("--kintsugi-speed must be between 25 and 300.")
     if not 20 <= args.kintsugi_density <= 100:
@@ -642,6 +668,8 @@ def main() -> None:
             frame = render_walker_frame(math.pi / 2)
         elif args.scene == "kintsugi":
             frame = render_kintsugi_frame(.64, theme=args.kintsugi_theme, density=args.kintsugi_density)
+        elif args.scene == "shadow":
+            frame = render_shadow_frame(.76, intensity=args.shadow_intensity)
         else:
             frame = draw_circle() if args.scene == "circle" else draw_clock(
                 fixed_time, show_numbers=not args.no_numbers, show_ticks=not args.no_ticks,
@@ -673,6 +701,7 @@ def main() -> None:
         weather_hour=args.weather_hour,
         kintsugi_theme=args.kintsugi_theme, kintsugi_speed=args.kintsugi_speed,
         kintsugi_density=args.kintsugi_density,
+        shadow_speed=args.shadow_speed, shadow_intensity=args.shadow_intensity,
     )
     emulator.run()
 

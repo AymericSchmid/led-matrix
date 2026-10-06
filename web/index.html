@@ -129,6 +129,10 @@
         <div class="setting"><div class="setting-header"><label for="kintsugi-speed">Pace</label><output id="kintsugi-speed-value">100%</output></div><input id="kintsugi-speed" type="range" min="25" max="300" step="25"><p>At 100%, each fracture and repair takes about a minute.</p></div>
         <div class="setting"><div class="setting-header"><label for="kintsugi-density">Crack density</label><output id="kintsugi-density-value">50%</output></div><input id="kintsugi-density" type="range" min="20" max="100" step="10"><p>From a few large pieces to a web of fine seams. Changing density starts a new tile.</p></div>
       </div>
+      <div id="shadow-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="shadow-speed">Pace</label><output id="shadow-speed-value">100%</output></div><input id="shadow-speed" type="range" min="25" max="200" step="25"><p>The room stays still. This controls how quickly the shadow notices you.</p></div>
+        <div class="setting"><div class="setting-header"><label for="shadow-intensity">Uncanny presence</label><output id="shadow-intensity-value">100%</output></div><input id="shadow-intensity" type="range" min="25" max="100" step="5"><p>How far the silhouette reaches, and how clearly its eyes appear.</p></div>
+      </div>
       <p id="empty-options" class="empty-options" hidden>This scene has no appearance settings yet.</p>
     </section>
 
@@ -173,7 +177,7 @@
     const sceneNames = {
       clock: ["Clock", "◷"], circle: ["Circle", "◯"], spotify: ["Spotify", "♫"],
       weather: ["Weather glass", "☀"], moon: ["Moon", "☾"],
-      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"], kintsugi: ["Kintsugi", "◇"]
+      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"], kintsugi: ["Kintsugi", "◇"], shadow: ["Impossible shadow", "◌"]
     };
     const $ = id => document.getElementById(id);
     const canvas = $("preview"), context = canvas.getContext("2d", {willReadFrequently: false});
@@ -212,8 +216,8 @@
     function renderSceneOptions(next) {
       const scene = next.scene;
       $("scene-options-title").textContent = (sceneNames[scene]?.[0] || scene) + " settings";
-      for (const name of ["clock", "spotify", "weather", "eyes", "kintsugi"]) $(name + "-options").hidden = scene !== name;
-      $("empty-options").hidden = ["clock", "spotify", "weather", "eyes", "kintsugi"].includes(scene);
+      for (const name of ["clock", "spotify", "weather", "eyes", "kintsugi", "shadow"]) $(name + "-options").hidden = scene !== name;
+      $("empty-options").hidden = ["clock", "spotify", "weather", "eyes", "kintsugi", "shadow"].includes(scene);
       if (scene === "clock") {
         $("clock-theme").value = next.theme;
         $("clock-numbers").checked = !next.no_numbers;
@@ -255,6 +259,13 @@
         }
         $("kintsugi-speed-value").textContent = $("kintsugi-speed").value + "%";
         $("kintsugi-density-value").textContent = $("kintsugi-density").value + "%";
+      } else if (scene === "shadow") {
+        if (!sceneSliderBusy) {
+          $("shadow-speed").value = next.shadow_speed;
+          $("shadow-intensity").value = next.shadow_intensity;
+        }
+        $("shadow-speed-value").textContent = $("shadow-speed").value + "%";
+        $("shadow-intensity-value").textContent = $("shadow-intensity").value + "%";
       }
     }
     function setSceneOption(key, value) {
@@ -405,6 +416,8 @@
     $("kintsugi-theme").addEventListener("change", event => setSceneOption("kintsugi_theme", event.target.value));
     bindSceneSlider("kintsugi-speed", "kintsugi_speed", value => value + "%");
     bindSceneSlider("kintsugi-density", "kintsugi_density", value => value + "%");
+    bindSceneSlider("shadow-speed", "shadow_speed", value => value + "%");
+    bindSceneSlider("shadow-intensity", "shadow_intensity", value => value + "%");
     $("brightness").addEventListener("change", async event => {
       await update("brightness", {brightness: Number(event.target.value)});
       sliderBusy = false;
