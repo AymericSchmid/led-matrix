@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Returning to Matrix</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #101513; color: #f2f1e8; font: 16px/1.5 system-ui, sans-serif; }
+    main { width: min(100% - 40px, 420px); padding: 32px; border: 1px solid #3e5440; border-radius: 22px; background: #1a241e; }
+    h1 { margin: 0 0 8px; font-size: 21px; }
+    p { color: #b7c6b9; }
+    a { display: inline-block; padding: 10px 14px; border-radius: 10px; background: #d9efaa; color: #1b2b1d; font-size: 13px; font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title">Returning to Matrix…</h1>
+    <p id="message">Your Spotify sign-in will finish on the Raspberry Pi.</p>
+    <a id="continue" hidden>Continue to Matrix</a>
+  </main>
+  <script>
+    function localOrigin(value) {
+      const url = new URL(value);
+      if (url.protocol !== "http:" || url.origin !== value || !url.port || url.username || url.password) throw Error("Invalid return address");
+      const host = url.hostname.toLowerCase();
+      const parts = host.split(".").map(Number);
+      const ipv4 = parts.length === 4 && parts.every(n => Number.isInteger(n) && n >= 0 && n <= 255);
+      const localIp = ipv4 && (parts[0] === 10 || parts[0] === 127 ||
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+        (parts[0] === 192 && parts[1] === 168));
+      if (!(localIp || host === "localhost" || host.endsWith(".local"))) throw Error("Not a local return address");
+      return url.origin;
+    }
+    try {
+      const params = new URLSearchParams(location.search);
+      const state = params.get("state") || "";
+      if (!state.includes(".") || (!params.has("code") && !params.has("error"))) throw Error("Missing Spotify response");
+      const encoded = state.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const origin = localOrigin(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")));
+      const target = origin + "/spotify/callback" + location.search;
+      const link = document.getElementById("continue");
+      link.href = target;
+      link.hidden = false;
+      setTimeout(() => location.assign(target), 250);
+    } catch (_) {
+      document.getElementById("title").textContent = "Unable to return to Matrix";
+      document.getElementById("message").textContent = "Open the Matrix controller on your Wi-Fi and start Spotify sign-in again.";
+    }
+  </script>
+</body>
+</html>

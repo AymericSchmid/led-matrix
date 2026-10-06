@@ -1,10 +1,11 @@
 """Phone-friendly, local-network controls for the 64 × 64 matrix."""
 
 import argparse
+from html import escape
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 import uvicorn
 
@@ -29,6 +30,7 @@ class SlowdownChange(BaseModel):
 
 class SpotifyLoginStart(BaseModel):
     client_id: str | None = Field(default=None, max_length=64)
+    return_origin: str | None = Field(default=None, max_length=256)
 
 
 class SpotifyLoginFinish(BaseModel):
@@ -85,7 +87,7 @@ def create_app(service: ControlService) -> FastAPI:
     @app.post("/api/spotify/login/start")
     def spotify_login_start(change: SpotifyLoginStart) -> dict:
         try:
-            return service.start_spotify_login(change.client_id)
+            return service.start_spotify_login(change.client_id, change.return_origin)
         except SpotifyError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -103,6 +105,25 @@ def create_app(service: ControlService) -> FastAPI:
         except SpotifyError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.get("/spotify/callback", include_in_schema=False)
+    def spotify_callback(code: str = "", state: str = "", error: str = "") -> Response:
+        try:
+            service.finish_spotify_redirect(code, state, error)
+        except SpotifyError as failure:
+            message = escape(str(failure))
+            return HTMLResponse(
+                "<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<meta name='referrer' content='no-referrer'><title>Spotify sign-in</title>"
+                "<body style='font:16px system-ui;background:#101513;color:#f2f1e8;padding:24px'>"
+                f"<h1>Spotify could not connect</h1><p>{message}</p>"
+                "<p><a style='color:#d9efaa' href='/'>Back to Matrix</a></p></body>",
+                status_code=400, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+            )
+        return RedirectResponse(
+            "/?spotify=connected", status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+
     return app
 
 
@@ -118,7 +139,7 @@ def main() -> None:
     service.start()
     try:
         print(f"Matrix control: http://{args.host}:{args.port}", flush=True)
-        uvicorn.run(create_app(service), host=args.host, port=args.port, workers=1)
+        uvicorn.run(create_app(service), host=args.host, port=args.port, workers=1, access_log=False)
     finally:
         service.stop()
 

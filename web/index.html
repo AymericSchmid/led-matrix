@@ -71,6 +71,7 @@
     .steps { margin: 0 0 15px; padding-left: 20px; color: #c3d0c4; font-size: 12px; line-height: 1.55; }
     .steps li + li { margin-top: 7px; }
     .spotify-note { margin-top: 11px !important; color: #8ea792 !important; font-size: 11px !important; }
+    .spotify-note code { display: block; margin-top: 5px; overflow-wrap: anywhere; color: #d9efaa; font-size: 11px; }
     [hidden] { display: none !important; }
     .notice { display: none; margin: 14px 0 0; padding: 12px 14px; border-radius: 13px; font-size: 12px; line-height: 1.4; color: #ffe1ba; background: #503d2b; border: 1px solid #8b6642; }
     .notice.visible { display: block; }
@@ -103,19 +104,17 @@
         <div class="actions"><button id="spotify-change" class="action secondary" type="button">Change account</button><button id="spotify-disconnect" class="action secondary" type="button">Disconnect</button></div>
       </div>
       <div id="spotify-setup" hidden>
-        <p>Enter the public Client ID from your Spotify Developer app. You only need to do this once.</p>
+        <p id="spotify-client-help">Enter the public Client ID from your Spotify Developer app. You only need to do this once.</p>
         <label for="spotify-client-id">Spotify Client ID</label>
         <input id="spotify-client-id" class="text-input" type="text" inputmode="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="32-character Client ID">
         <div class="actions"><button id="spotify-start" class="action" type="button">Connect Spotify</button><button id="spotify-setup-back" class="action secondary" type="button" hidden>Cancel</button></div>
-        <p class="spotify-note">Your app must have <strong>http://127.0.0.1:8888/callback</strong> saved as a Redirect URI.</p>
+        <p class="spotify-note">Add this exact Redirect URI in your Spotify Developer app:<code id="spotify-redirect"></code></p>
       </div>
       <div id="spotify-pending" hidden>
-        <ol class="steps"><li>Open Spotify in a new tab and approve access.</li><li>The browser may say it cannot open the final page. Copy the <em>entire address</em> from its address bar.</li><li>Come back to this tab, paste the address below, and finish connecting.</li></ol>
+        <p>Open Spotify and approve access. You will return to this controller automatically.</p>
         <a id="spotify-open" class="action" target="_blank" rel="noopener noreferrer">Open Spotify</a>
-        <label for="spotify-return">Address after Spotify sign-in</label>
-        <input id="spotify-return" class="text-input" type="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8888/callback?code=…">
-        <div class="actions"><button id="spotify-complete" class="action" type="button">Finish connection</button><button id="spotify-restart" class="action secondary" type="button">Start again</button></div>
-        <p class="spotify-note">This sign-in link expires after five minutes. Your Spotify password is never entered here.</p>
+        <div class="actions"><button id="spotify-restart" class="action secondary" type="button">Start again</button></div>
+        <p class="spotify-note">This sign-in link expires after five minutes. Keep your phone on the same Wi-Fi until you return.</p>
       </div>
     </section>
 
@@ -176,6 +175,11 @@
     function renderSpotifyStatus(status) {
       const idInput = $("spotify-client-id");
       if (document.activeElement !== idInput) idInput.value = status.client_id || "";
+      idInput.disabled = !!status.client_id_locked;
+      $("spotify-client-help").textContent = status.client_id_locked
+        ? "The public Client ID is configured when the Raspberry Pi starts."
+        : "Enter the public Client ID from your Spotify Developer app. You only need to do this once.";
+      if (status.redirect_uri) $("spotify-redirect").textContent = status.redirect_uri;
       if (status.pending) spotifyFlow = "pending";
       else if (spotifyFlow !== "change") spotifyFlow = status.connected ? "connected" : "setup";
       if (spotifyFlow === "pending" && !status.pending) spotifyFlow = status.connected ? "connected" : "setup";
@@ -199,7 +203,7 @@
     async function spotifyRequest(path, method, body) {
       if (spotifyBusy) return null;
       spotifyBusy = true;
-      const buttons = ["spotify-start", "spotify-complete", "spotify-disconnect", "spotify-restart"];
+      const buttons = ["spotify-start", "spotify-disconnect", "spotify-restart"];
       buttons.forEach(id => $(id).disabled = true);
       try {
         const response = await fetch("/api/spotify/" + path, {
@@ -306,34 +310,32 @@
     });
     $("spotify-start").addEventListener("click", async () => {
       const clientId = $("spotify-client-id").value.trim();
-      const result = await spotifyRequest("login/start", "POST", {client_id: clientId || null});
+      const result = await spotifyRequest("login/start", "POST", {client_id: clientId || null, return_origin: location.origin});
       if (result) {
-        $("spotify-return").value = "";
-        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url});
+        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url, client_id_locked: $("spotify-client-id").disabled});
       }
     });
     $("spotify-restart").addEventListener("click", async () => {
-      const result = await spotifyRequest("login/start", "POST", {client_id: $("spotify-client-id").value.trim() || null});
+      const result = await spotifyRequest("login/start", "POST", {client_id: $("spotify-client-id").value.trim() || null, return_origin: location.origin});
       if (result) {
-        $("spotify-return").value = "";
-        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url});
-      }
-    });
-    $("spotify-complete").addEventListener("click", async () => {
-      const address = $("spotify-return").value.trim();
-      const result = await spotifyRequest("login/complete", "POST", {callback_url: address});
-      if (result) {
-        $("spotify-return").value = "";
-        renderSpotifyStatus(result);
-        notice("Spotify is connected. Your music is ready for the matrix.");
-        await update("scene", {scene: "spotify"});
+        renderSpotifyStatus({client_id: result.client_id, connected: false, pending: true, login_url: result.url, client_id_locked: $("spotify-client-id").disabled});
       }
     });
     $("spotify-disconnect").addEventListener("click", async () => {
       const result = await spotifyRequest("connection", "DELETE");
       if (result) { spotifyFlow = null; renderSpotifyStatus(result); notice("Spotify was disconnected from this Pi."); }
     });
-    readState(); readFrame(); readSpotifyStatus();
+    (async () => {
+      const returned = new URLSearchParams(location.search).get("spotify") === "connected";
+      if (returned) history.replaceState(null, "", location.pathname);
+      await readState();
+      await readSpotifyStatus();
+      if (returned) {
+        notice("Spotify is connected. Your music is ready for the matrix.");
+        await update("scene", {scene: "spotify"});
+      }
+    })();
+    readFrame();
     setInterval(readState, 2500);
     setInterval(readFrame, 500);
     setInterval(readSpotifyStatus, 5000);

@@ -15,6 +15,7 @@ except ImportError:
     TestClient = None
 
 from control_service import ControlService, SettingsStore
+from spotify_client import DEFAULT_PHONE_REDIRECT_URI
 
 
 CLIENT_ID = "0123456789abcdef0123456789abcdef"
@@ -22,6 +23,15 @@ CLIENT_ID = "0123456789abcdef0123456789abcdef"
 
 @unittest.skipIf(TestClient is None, "install requirements-web.txt and httpx for API checks")
 class WebAppTests(unittest.TestCase):
+    def setUp(self):
+        for target, value in (
+            ("control_service.configured_env_client_id", ""),
+            ("control_service.phone_redirect_uri", DEFAULT_PHONE_REDIRECT_URI),
+        ):
+            active = patch(target, return_value=value)
+            active.start()
+            self.addCleanup(active.stop)
+
     def test_state_scene_frame_and_hardware_settings(self):
         with TemporaryDirectory() as directory:
             service = ControlService(store=SettingsStore(Path(directory) / "control.db"))
@@ -85,6 +95,51 @@ class WebAppTests(unittest.TestCase):
                     self.assertEqual(client.delete("/api/spotify/connection").status_code, 200)
                     self.assertFalse(client.get("/api/spotify/status").json()["connected"])
                     self.assertFalse((root / ".spotify" / "tokens.json").exists())
+            finally:
+                service.stop()
+
+    def test_github_pages_callback_returns_to_local_controller(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            service = ControlService(
+                store=SettingsStore(root / "control.db"), spotify_data_dir=root / ".spotify",
+            )
+            service.start()
+            try:
+                with TestClient(create_app(service)) as client:
+                    start = client.post("/api/spotify/login/start", json={
+                        "client_id": CLIENT_ID, "return_origin": "http://matrix.local:8000",
+                    })
+                    self.assertEqual(start.status_code, 200)
+                    query = parse_qs(urlsplit(start.json()["url"]).query)
+                    self.assertEqual(query["redirect_uri"], [DEFAULT_PHONE_REDIRECT_URI])
+                    self.assertIn(".", query["state"][0])
+                    self.assertEqual(client.get("/spotify/callback", params={
+                        "code": "sample", "state": "wrong",
+                    }).status_code, 400)
+                    with patch("spotify_client.request_json", return_value={
+                        "access_token": "access", "refresh_token": "refresh", "expires_in": 3600,
+                    }) as exchange:
+                        callback = client.get("/spotify/callback", params={
+                            "code": "sample", "state": query["state"][0],
+                        }, follow_redirects=False)
+                    self.assertEqual(callback.status_code, 303)
+                    self.assertEqual(callback.headers["location"], "/?spotify=connected")
+                    self.assertEqual(exchange.call_args.kwargs["fields"]["redirect_uri"], DEFAULT_PHONE_REDIRECT_URI)
+                    self.assertTrue(client.get("/api/spotify/status").json()["connected"])
+            finally:
+                service.stop()
+
+    def test_bridge_rejects_nonlocal_return_address(self):
+        with TemporaryDirectory() as directory:
+            service = ControlService(store=SettingsStore(Path(directory) / "control.db"))
+            service.start()
+            try:
+                with TestClient(create_app(service)) as client:
+                    response = client.post("/api/spotify/login/start", json={
+                        "client_id": CLIENT_ID, "return_origin": "http://example.com:8000",
+                    })
+                    self.assertEqual(response.status_code, 400)
             finally:
                 service.stop()
 

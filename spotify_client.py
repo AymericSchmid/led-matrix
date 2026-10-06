@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import ipaddress
 from io import BytesIO
 import json
 import os
@@ -22,7 +23,9 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DATA_DIR = Path(__file__).resolve().parent / ".spotify"
+ENV_FILE = Path(__file__).resolve().parent / ".env"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
+DEFAULT_PHONE_REDIRECT_URI = "https://aymericschmid.github.io/led-matrix/spotify-callback.html"
 SCOPE = "user-read-currently-playing"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 PLAYER_URL = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -43,10 +46,72 @@ def validate_client_id(value: str) -> str:
     return value
 
 
+def dotenv_value(name: str, path: Path | None = None) -> str:
+    """Read a simple KEY=value setting without executing the file as a script."""
+    path = path or ENV_FILE
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == name:
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            return value
+    return ""
+
+
+def configured_env_client_id() -> str:
+    value = os.environ.get("SPOTIFY_CLIENT_ID", "").strip() or dotenv_value("SPOTIFY_CLIENT_ID")
+    return validate_client_id(value) if value else ""
+
+
+def phone_redirect_uri() -> str:
+    value = os.environ.get("SPOTIFY_REDIRECT_URI", "").strip() or dotenv_value("SPOTIFY_REDIRECT_URI")
+    value = value or DEFAULT_PHONE_REDIRECT_URI
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise SpotifyError("SPOTIFY_REDIRECT_URI must be a complete HTTPS page without a query or fragment.")
+    return value
+
+
+def local_return_origin(value: str) -> str:
+    """Permit the browser to return only to a controller on the local network."""
+    parsed = urlsplit(value)
+    if parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
+        raise SpotifyError("Open the controller using its local Wi-Fi address before connecting Spotify.")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise SpotifyError("The controller address has an invalid port.") from None
+    try:
+        address = ipaddress.ip_address(parsed.hostname)
+        private_networks = (
+            ipaddress.ip_network("10.0.0.0/8"), ipaddress.ip_network("172.16.0.0/12"),
+            ipaddress.ip_network("192.168.0.0/16"), ipaddress.ip_network("127.0.0.0/8"),
+        )
+        allowed = isinstance(address, ipaddress.IPv4Address) and any(
+            address in network for network in private_networks
+        )
+    except ValueError:
+        allowed = parsed.hostname == "localhost" or parsed.hostname.endswith(".local")
+    if not allowed or port is None:
+        raise SpotifyError("Open the controller using its local Wi-Fi address before connecting Spotify.")
+    return value
+
+
+def bridge_state(nonce: str, return_origin: str) -> str:
+    origin = local_return_origin(return_origin)
+    encoded = base64.urlsafe_b64encode(origin.encode("ascii")).rstrip(b"=").decode("ascii")
+    return f"{nonce}.{encoded}"
+
+
 def configured_client_id() -> str:
-    value = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
+    value = configured_env_client_id()
     if value:
-        return validate_client_id(value)
+        return value
     try:
         config = json.loads((DATA_DIR / "config.json").read_text(encoding="utf-8"))
         return validate_client_id(config["client_id"])
@@ -124,10 +189,10 @@ def callback_result(path: str, expected_state: str) -> tuple[str, str] | None:
     return query.get("code", [""])[0], query.get("error", [""])[0]
 
 
-def authorization_url(client_id: str, challenge: str, state: str) -> str:
+def authorization_url(client_id: str, challenge: str, state: str, redirect_uri: str = REDIRECT_URI) -> str:
     query = urlencode({
         "client_id": validate_client_id(client_id), "response_type": "code",
-        "redirect_uri": REDIRECT_URI, "scope": SCOPE, "state": state,
+        "redirect_uri": redirect_uri, "scope": SCOPE, "state": state,
         "code_challenge_method": "S256", "code_challenge": challenge,
     })
     return "https://accounts.spotify.com/authorize?" + query
@@ -244,11 +309,11 @@ class SpotifyClient:
         temporary.replace(self.token_path)
         self.token = token
 
-    def exchange_code(self, code: str, verifier: str) -> None:
+    def exchange_code(self, code: str, verifier: str, redirect_uri: str = REDIRECT_URI) -> None:
         # An explicit new login must not inherit another account's refresh token.
         self.token = {}
         self._save_token(request_json(TOKEN_URL, fields={
-            "grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
             "client_id": self.client_id, "code_verifier": verifier,
         }))
 

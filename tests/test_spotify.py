@@ -71,6 +71,18 @@ class SpotifyTests(unittest.TestCase):
             with self.subTest(address=address), self.assertRaises(spotify.SpotifyError):
                 spotify.phone_callback_result(address, "expected")
 
+    def test_dotenv_client_id_and_local_return_origin(self):
+        path = Path(self.temp.name) / ".env"
+        path.write_text(f"# Matrix settings\nSPOTIFY_CLIENT_ID='{CLIENT_ID}'\n", encoding="utf-8")
+        self.assertEqual(spotify.dotenv_value("SPOTIFY_CLIENT_ID", path), CLIENT_ID)
+        with patch.object(spotify, "ENV_FILE", path), patch.dict("os.environ", {"SPOTIFY_CLIENT_ID": ""}):
+            self.assertEqual(spotify.configured_env_client_id(), CLIENT_ID)
+        self.assertEqual(spotify.local_return_origin("http://matrix.local:8000"), "http://matrix.local:8000")
+        self.assertEqual(spotify.local_return_origin("http://192.168.1.12:8000"), "http://192.168.1.12:8000")
+        for origin in ("http://example.com:8000", "http://8.8.8.8:8000", "http://matrix.local:bad"):
+            with self.subTest(origin=origin), self.assertRaises(spotify.SpotifyError):
+                spotify.local_return_origin(origin)
+
     def test_first_run_requires_login_without_network(self):
         with patch.object(spotify, "request_json") as request:
             with self.assertRaises(spotify.SpotifyError) as raised:

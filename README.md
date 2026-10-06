@@ -90,14 +90,14 @@ On a phone connected to the same Wi-Fi, open **http://matrix.local:8000**. If th
 
 To try the phone page on a computer without a matrix, install `requirements-web.txt` and run `python web_app.py`. Then open **http://127.0.0.1:8000**. The page labels this mode “Preview only.”
 
-To connect Spotify from your phone:
+To enable one-tap Spotify sign-in from your phone, set up the HTTPS return page once:
 
-1. In your Spotify Developer app, keep **exactly** `http://127.0.0.1:8888/callback` in the Redirect URI list. This is the same URI used by the desktop emulator.
-2. In the controller's **Spotify account** card, enter your public Client ID once and tap **Connect Spotify**. You can also provide it when launching with `--spotify-client-id YOUR_CLIENT_ID`.
-3. Tap **Open Spotify**. Approve access in the new browser tab. The browser will probably say it cannot open the final `127.0.0.1` page. Copy the **entire address** from its address bar, including `code` and `state`.
-4. Return to the controller tab, paste that address, and tap **Finish connection**. The Spotify scene opens automatically. You can later change accounts or disconnect from the same card.
+1. Push this version of the repository to GitHub. In the repository's **Settings → Pages**, choose **Deploy from a branch**, `main`, and `/docs`, then save. The only files published from `/docs` are a small return page and its index.
+2. Wait until GitHub Pages shows the published site. For this repository, the return address is **`https://aymericschmid.github.io/led-matrix/spotify-callback.html`**. Add that exact URL to your Spotify Developer app's Redirect URIs and save. Keep the existing `http://127.0.0.1:8888/callback` entry for the desktop emulator and command-line Pi runner.
+3. On the Pi, copy `.env.example` to `.env`, replace the placeholder with your app's public Client ID, and restart `web_app.py`. The controller reads `.env` itself, including when launched with `sudo`. `.env` is ignored by Git. You may instead enter the Client ID in the phone page; `.env` is the more convenient permanent setting.
+4. On your phone, tap **Connect Spotify** and **Open Spotify**. After approval, the GitHub Pages return page sends the browser back to your Pi and the Spotify scene opens automatically.
 
-The pasted callback is verified against a short-lived PKCE sign-in attempt. The Pi exchanges the code and keeps the refresh token in its Git-ignored `.spotify/tokens.json`; the controller never asks for your Spotify password or Client Secret. Sign-in normally needs to be repeated only if access is revoked or you disconnect. The callback must be copied because [Spotify requires HTTPS for non-loopback redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), while this controller uses HTTP only on your local Wi-Fi.
+GitHub Pages only returns the one-time authorization code to the controller's local Wi-Fi address. The matrix controls and refresh token stay on the Pi; the token is saved in Git-ignored `.spotify/tokens.json`. The sign-in uses PKCE and requests only `user-read-currently-playing`, so no Client Secret is needed. [Spotify requires HTTPS for non-loopback redirects](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), which is why this static return page exists. If your GitHub Pages URL differs, set `SPOTIFY_REDIRECT_URI` in `.env` to the exact published page and add the same URL in Spotify's dashboard. Never forward the controller's port 8000 from your router.
 
 ### Spotify with the command-line matrix runner
 

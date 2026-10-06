@@ -15,8 +15,9 @@ from PIL import Image
 
 from headless_scene import HeadlessScene
 from spotify_client import (
-    DATA_DIR as SPOTIFY_DATA_DIR, SpotifyClient, SpotifyError, authorization_url,
-    configured_client_id, phone_callback_result, pkce_pair, validate_client_id,
+    DATA_DIR as SPOTIFY_DATA_DIR, REDIRECT_URI, SpotifyClient, SpotifyError, authorization_url,
+    bridge_state, configured_client_id, configured_env_client_id, phone_callback_result,
+    phone_redirect_uri, pkce_pair, validate_client_id,
 )
 from weather_scene import DEFAULT_CITY
 
@@ -82,6 +83,7 @@ class PendingSpotifyLogin:
     state: str
     verifier: str
     url: str
+    redirect_uri: str
     expires_at: float
 
 
@@ -92,8 +94,11 @@ class ControlService:
     ):
         self.store = store or SettingsStore()
         self.settings = self.store.load()
-        if spotify_client_id:
-            self.settings = replace(self.settings, spotify_client_id=validate_client_id(spotify_client_id))
+        fixed_client_id = spotify_client_id or configured_env_client_id()
+        self.spotify_client_id_locked = bool(fixed_client_id)
+        self.spotify_redirect_uri = phone_redirect_uri()
+        if fixed_client_id:
+            self.settings = replace(self.settings, spotify_client_id=validate_client_id(fixed_client_id))
         self.spotify_data_dir = spotify_data_dir
         self.spotify_login: PendingSpotifyLogin | None = None
         self.spotify_login_busy = False
@@ -212,12 +217,16 @@ class ControlService:
             return {
                 "client_id": client_id, "connected": bool(token), "pending": pending,
                 "login_url": self.spotify_login.url if pending else None,
+                "client_id_locked": self.spotify_client_id_locked,
+                "redirect_uri": self.spotify_redirect_uri,
             }
 
-    def start_spotify_login(self, client_id: str | None = None) -> dict:
+    def start_spotify_login(self, client_id: str | None = None, return_origin: str | None = None) -> dict:
         with self.lock:
             if self.spotify_login_busy:
                 raise SpotifyError("A Spotify sign-in is already finishing. Please wait a moment.")
+            if self.spotify_client_id_locked and client_id and client_id != self.settings.spotify_client_id:
+                raise SpotifyError("This Client ID is set on the Pi. Change its .env or launch option, then restart the controller.")
             chosen = validate_client_id(client_id or self._spotify_client_id())
             if chosen != self.settings.spotify_client_id:
                 new_settings = replace(self.settings, spotify_client_id=chosen)
@@ -226,9 +235,13 @@ class ControlService:
                 self.settings = new_settings
                 self.store.save(self.settings)
             verifier, challenge = pkce_pair()
-            state = secrets.token_urlsafe(32)
-            url = authorization_url(chosen, challenge, state)
-            self.spotify_login = PendingSpotifyLogin(chosen, state, verifier, url, time.monotonic() + 300)
+            nonce = secrets.token_urlsafe(32)
+            state = bridge_state(nonce, return_origin) if return_origin else nonce
+            redirect_uri = self.spotify_redirect_uri if return_origin else REDIRECT_URI
+            url = authorization_url(chosen, challenge, state, redirect_uri)
+            self.spotify_login = PendingSpotifyLogin(
+                chosen, state, verifier, url, redirect_uri, time.monotonic() + 300,
+            )
             return {"url": url, "client_id": chosen}
 
     def finish_spotify_login(self, callback_url: str) -> dict:
@@ -237,9 +250,28 @@ class ControlService:
             if pending is None or time.monotonic() >= pending.expires_at:
                 self.spotify_login = None
                 raise SpotifyError("This sign-in has expired. Start a new Spotify sign-in.")
+            if pending.redirect_uri != REDIRECT_URI:
+                raise SpotifyError("This sign-in returns automatically to the Pi. Open Spotify again from the controller.")
+            code, error = phone_callback_result(callback_url, pending.state)
+            return self._finish_spotify_login(code, pending.state, error)
+
+    def finish_spotify_redirect(self, code: str, state: str, error: str = "") -> dict:
+        with self.lock:
+            pending = self.spotify_login
+            if pending is None or pending.redirect_uri == REDIRECT_URI:
+                raise SpotifyError("No phone sign-in is waiting. Start again from the controller.")
+            return self._finish_spotify_login(code, state, error)
+
+    def _finish_spotify_login(self, code: str, state: str, error: str) -> dict:
+        with self.lock:
+            pending = self.spotify_login
+            if pending is None or time.monotonic() >= pending.expires_at:
+                self.spotify_login = None
+                raise SpotifyError("This sign-in has expired. Start a new Spotify sign-in.")
+            if not secrets.compare_digest(state, pending.state):
+                raise SpotifyError("That Spotify return address belongs to another sign-in attempt.")
             if self.spotify_login_busy:
                 raise SpotifyError("A Spotify sign-in is already finishing. Please wait a moment.")
-            code, error = phone_callback_result(callback_url, pending.state)
             if error:
                 self.spotify_login = None
                 raise SpotifyError("Spotify sign-in was cancelled. You can try again.")
@@ -248,7 +280,9 @@ class ControlService:
             self.spotify_login_busy = True
 
         try:
-            SpotifyClient(pending.client_id, self.spotify_data_dir).exchange_code(code, pending.verifier)
+            SpotifyClient(pending.client_id, self.spotify_data_dir).exchange_code(
+                code, pending.verifier, pending.redirect_uri,
+            )
         except Exception:
             with self.lock:
                 self.spotify_login = None

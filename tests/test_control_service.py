@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from PIL import Image
@@ -15,6 +16,11 @@ from spotify_client import SpotifyError
 
 
 class ControlServiceTests(unittest.TestCase):
+    def setUp(self):
+        active = patch("control_service.configured_env_client_id", return_value="")
+        active.start()
+        self.addCleanup(active.stop)
+
     def test_expired_spotify_login_cannot_exchange_code(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -29,6 +35,19 @@ class ControlServiceTests(unittest.TestCase):
                 with self.assertRaises(SpotifyError):
                     service.finish_spotify_login(callback)
                 self.assertFalse((root / ".spotify" / "tokens.json").exists())
+            finally:
+                service.stop()
+
+    def test_client_id_from_environment_is_used_and_locked(self):
+        with TemporaryDirectory() as directory:
+            with patch("control_service.configured_env_client_id", return_value="0123456789abcdef0123456789abcdef"):
+                service = ControlService(store=SettingsStore(Path(directory) / "control.db"))
+            try:
+                status = service.spotify_status()
+                self.assertEqual(status["client_id"], "0123456789abcdef0123456789abcdef")
+                self.assertTrue(status["client_id_locked"])
+                with self.assertRaises(SpotifyError):
+                    service.start_spotify_login("a" * 32)
             finally:
                 service.stop()
 
