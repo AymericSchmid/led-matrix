@@ -20,6 +20,11 @@ class SceneChange(BaseModel):
     scene: str
 
 
+class SceneOptionsChange(BaseModel):
+    scene: str
+    changes: dict[str, object]
+
+
 class BrightnessChange(BaseModel):
     brightness: int
 
@@ -70,6 +75,13 @@ def create_app(service: ControlService) -> FastAPI:
     def set_brightness(change: BrightnessChange) -> dict:
         try:
             return service.set_brightness(change.brightness)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.put("/api/scene-options")
+    def set_scene_options(change: SceneOptionsChange) -> dict:
+        try:
+            return service.set_scene_options(change.scene, change.changes)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 

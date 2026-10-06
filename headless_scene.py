@@ -71,6 +71,8 @@ class HeadlessScene:
             return draw_clock(
                 self.fixed_time or datetime.now(), show_numbers=not args.no_numbers,
                 show_ticks=not args.no_ticks, theme=args.theme,
+                hand_length_scale=getattr(args, "hand_length_percent", 100) / 100,
+                hand_width_scale=getattr(args, "hand_width_percent", 100) / 100,
             ), "Clock"
         if args.scene == "moon":
             night = nighttime_reference()

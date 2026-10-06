@@ -71,7 +71,7 @@ The matrix driver initializes with root access under `sudo` and then drops back 
 
 ### Phone controller on your Wi-Fi
 
-The phone controller is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, save GPIO slowdown, and connect Spotify. Settings persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling is planned for a later milestone.
+The phone controller is a small web app served by the Pi. It lets you select any scene, see the actual 64 × 64 frame as an LED-dot preview, adjust brightness, save GPIO slowdown, and connect Spotify. Each supported scene has its own settings: clock theme, numbers, ticks and hand size; Spotify cover, vinyl and colour-drift views with their relevant options; and live or preview weather with city and preview hour. Scene changes appear on the matrix and preview immediately and persist in `.matrix/control.db`, which Git ignores. Brightness changes immediately; GPIO slowdown takes effect when the controller restarts. Scheduling is planned for a later milestone.
 
 Install the additional web dependencies in the existing virtual environment:
 

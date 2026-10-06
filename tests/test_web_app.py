@@ -38,7 +38,11 @@ class WebAppTests(unittest.TestCase):
             service.start()
             try:
                 with TestClient(create_app(service)) as client:
-                    self.assertEqual(client.get("/").status_code, 200)
+                    page = client.get("/")
+                    self.assertEqual(page.status_code, 200)
+                    self.assertIn('id="clock-theme"', page.text)
+                    self.assertIn('id="spotify-style"', page.text)
+                    self.assertIn('id="weather-mode"', page.text)
                     self.assertEqual(client.get("/api/state").json()["scene"], "clock")
                     scene = client.put("/api/scene", json={"scene": "circle"})
                     self.assertEqual(scene.status_code, 200)
@@ -52,6 +56,17 @@ class WebAppTests(unittest.TestCase):
                     self.assertTrue(slowdown.json()["restart_required"])
                     self.assertEqual(client.put("/api/scene", json={"scene": "invalid"}).status_code, 400)
                     self.assertEqual(client.put("/api/brightness", json={"brightness": 0}).status_code, 400)
+                    options = client.put("/api/scene-options", json={
+                        "scene": "clock", "changes": {"theme": "dark", "hand_length_percent": 120},
+                    })
+                    self.assertEqual(options.status_code, 200)
+                    self.assertEqual(options.json()["theme"], "dark")
+                    self.assertEqual(client.get("/api/state").json()["hand_length_percent"], 120)
+                    invalid = client.put("/api/scene-options", json={
+                        "scene": "spotify", "changes": {"theme": "light"},
+                    })
+                    self.assertEqual(invalid.status_code, 400)
+                    self.assertEqual(client.get("/api/state").json()["theme"], "dark")
                     with patch("headless_scene.configured_client_id", return_value=""):
                         self.assertEqual(client.put("/api/scene", json={"scene": "spotify"}).status_code, 409)
                     self.assertEqual(client.get("/api/state").json()["scene"], "circle")

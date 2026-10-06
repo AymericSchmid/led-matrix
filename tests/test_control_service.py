@@ -13,6 +13,7 @@ from PIL import Image
 
 from control_service import ControlService, SettingsStore
 from spotify_client import SpotifyError
+from weather_scene import weather_kind
 
 
 class ControlServiceTests(unittest.TestCase):
@@ -87,6 +88,64 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertFalse(restarted.state()["restart_required"])
             finally:
                 restarted.stop()
+
+    def test_scene_options_update_live_and_survive_restart(self):
+        with TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "control.db")
+            service = ControlService(store=store)
+            try:
+                before = service.source.frame()[0].tobytes()
+                service.set_scene_options("clock", {
+                    "theme": "dark", "no_numbers": True,
+                    "hand_length_percent": 125, "hand_width_percent": 150,
+                })
+                after = service.source.frame()[0].tobytes()
+                self.assertNotEqual(before, after)
+                self.assertEqual(service.state()["hand_width_percent"], 150)
+                service.set_scene_options("spotify", {
+                    "spotify_style": "colour-drift", "no_drift_cover": True,
+                    "drift_blackness": 5,
+                })
+                service.set_scene_options("weather", {
+                    "weather_demo": "snow", "weather_hour": 23,
+                    "weather_city": "Fribourg",
+                })
+                service.select_scene("weather")
+                self.assertIsNone(service.source.weather_worker)
+                self.assertEqual(service.source.args.weather_hour, 23)
+                service.set_scene_options("weather", {"weather_demo": "rain"})
+                self.assertEqual(weather_kind(service.source.weather.code), "rain")
+            finally:
+                service.stop()
+
+            restarted = ControlService(store=store)
+            try:
+                self.assertEqual(restarted.state()["theme"], "dark")
+                self.assertEqual(restarted.state()["spotify_style"], "colour-drift")
+                self.assertEqual(restarted.state()["weather_demo"], "rain")
+            finally:
+                restarted.stop()
+
+    def test_scene_options_reject_invalid_values_without_mutating_settings(self):
+        with TemporaryDirectory() as directory:
+            service = ControlService(store=SettingsStore(Path(directory) / "control.db"))
+            try:
+                before = service.state()
+                for scene, changes in (
+                    ("clock", {"theme": "blue"}),
+                    ("clock", {"hand_length_percent": 140}),
+                    ("clock", {"no_ticks": 1}),
+                    ("weather", {"weather_hour": 24}),
+                    ("weather", {"weather_city": " "}),
+                    ("spotify", {"drift_blackness": -1}),
+                    ("moon", {"theme": "dark"}),
+                    ("clock", {"theme": "dark", "no_ticks": 1}),
+                ):
+                    with self.subTest(scene=scene, changes=changes), self.assertRaises(ValueError):
+                        service.set_scene_options(scene, changes)
+                    self.assertEqual(service.state(), before)
+            finally:
+                service.stop()
 
 
 if __name__ == "__main__":

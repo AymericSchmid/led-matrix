@@ -19,10 +19,16 @@ from spotify_client import (
     bridge_state, configured_client_id, configured_env_client_id, phone_callback_result,
     phone_redirect_uri, pkce_pair, validate_client_id,
 )
-from weather_scene import DEFAULT_CITY
+from spotify_scene import SPOTIFY_STYLES
+from weather_scene import DEFAULT_CITY, DEMO_WEATHERS
 
 
 SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker")
+SCENE_OPTIONS = {
+    "clock": frozenset(("theme", "no_numbers", "no_ticks", "hand_length_percent", "hand_width_percent")),
+    "spotify": frozenset(("spotify_style", "no_progress", "no_drift_cover", "drift_blackness")),
+    "weather": frozenset(("weather_city", "weather_demo", "weather_hour")),
+}
 DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 
 
@@ -34,6 +40,8 @@ class ControlSettings:
     theme: str = "light"
     no_numbers: bool = False
     no_ticks: bool = False
+    hand_length_percent: int = 100
+    hand_width_percent: int = 100
     no_progress: bool = False
     spotify_style: str = "cover"
     no_drift_cover: bool = False
@@ -204,6 +212,53 @@ class ControlService:
             self._replace_source(new_settings)
             self.settings = new_settings
             self.store.save(self.settings)
+            return self.state()
+
+    def set_scene_options(self, scene: str, changes: dict) -> dict:
+        if scene not in SCENES:
+            raise ValueError("Unknown scene.")
+        allowed = SCENE_OPTIONS.get(scene, frozenset())
+        if not changes or not changes.keys() <= allowed:
+            raise ValueError("Unknown or missing setting for this scene.")
+
+        for key, value in changes.items():
+            if key in ("no_numbers", "no_ticks", "no_progress", "no_drift_cover"):
+                valid = type(value) is bool
+            elif key in ("hand_length_percent", "hand_width_percent", "drift_blackness", "weather_hour"):
+                limits = {
+                    "hand_length_percent": (60, 130), "hand_width_percent": (50, 250),
+                    "drift_blackness": (0, 100), "weather_hour": (0, 23),
+                }
+                lower, upper = limits[key]
+                valid = type(value) is int and lower <= value <= upper
+            elif key == "theme":
+                valid = value in ("light", "dark")
+            elif key == "spotify_style":
+                valid = value in SPOTIFY_STYLES
+            elif key == "weather_demo":
+                valid = value is None or value in DEMO_WEATHERS
+            else:
+                valid = isinstance(value, str) and 1 <= len(value.strip()) <= 100
+                if valid:
+                    changes[key] = value.strip()
+            if not valid:
+                raise ValueError(f"Invalid value for {key.replace('_', ' ')}.")
+
+        with self.lock:
+            updated = replace(self.settings, **changes)
+            if updated == self.settings:
+                return self.state()
+            if scene == self.settings.scene:
+                if scene == "weather" and any(
+                    getattr(updated, key) != getattr(self.settings, key)
+                    for key in ("weather_city", "weather_demo")
+                ):
+                    self._replace_source(updated)
+                else:
+                    self.source.args = updated.scene_args()
+                    self.wake.set()
+            self.settings = updated
+            self.store.save(updated)
             return self.state()
 
     def _spotify_client_id(self) -> str:

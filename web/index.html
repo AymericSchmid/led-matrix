@@ -51,6 +51,10 @@
     output { font-size: 12px; color: #d9efaa; font-variant-numeric: tabular-nums; }
     input[type=range] { width: 100%; margin: 0; accent-color: #d9efaa; }
     .setting p { font-size: 11px; color: #9eac9f; line-height: 1.45; margin: 10px 0 0; }
+    .setting select { width: 100%; padding: 11px; border-radius: 11px; border: 1px solid #536954; background: #101913; color: #f2f1e8; font: inherit; font-size: 13px; }
+    .setting input[type=checkbox] { width: 20px; height: 20px; margin: 0; accent-color: #d9efaa; }
+    .setting .setting-header { gap: 12px; }
+    .empty-options { margin: 0; color: #a7b7a9; font-size: 12px; line-height: 1.5; }
     .stepper { display: flex; gap: 9px; align-items: center; }
     .stepper button { width: 38px; height: 34px; border: 1px solid #53644f; background: #2a362b; color: #f2f1e8; border-radius: 10px; font-size: 20px; }
     .stepper output { width: 25px; text-align: center; }
@@ -95,6 +99,29 @@
 
     <div class="section-head"><h2>Choose a scene</h2><span class="hint">Tap to display</span></div>
     <section id="scenes" class="scene-grid" aria-label="Scenes"></section>
+
+    <div class="section-head"><h2 id="scene-options-title">Scene appearance</h2><span class="hint">Changes apply live</span></div>
+    <section class="settings" aria-label="Scene appearance">
+      <div id="clock-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="clock-theme">Clock theme</label></div><select id="clock-theme"><option value="light">Warm white</option><option value="dark">Dark</option></select></div>
+        <div class="setting"><div class="setting-header"><label for="clock-numbers">Show numbers</label><input id="clock-numbers" type="checkbox"></div></div>
+        <div class="setting"><div class="setting-header"><label for="clock-ticks">Show minute ticks</label><input id="clock-ticks" type="checkbox"></div></div>
+        <div class="setting"><div class="setting-header"><label for="hand-length">Hand length</label><output id="hand-length-value">100%</output></div><input id="hand-length" type="range" min="60" max="130" step="5"></div>
+        <div class="setting"><div class="setting-header"><label for="hand-width">Hand thickness</label><output id="hand-width-value">100%</output></div><input id="hand-width" type="range" min="50" max="250" step="10"></div>
+      </div>
+      <div id="spotify-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="spotify-style">Music view</label></div><select id="spotify-style"><option value="cover">Album cover</option><option value="vinyl-spin">Vinyl · spinning cover</option><option value="vinyl-still">Vinyl · still cover</option><option value="colour-drift">Soft colour drift</option></select></div>
+        <div id="progress-setting" class="setting"><div class="setting-header"><label for="spotify-progress">Show progress bar</label><input id="spotify-progress" type="checkbox"></div></div>
+        <div id="drift-cover-setting" class="setting" hidden><div class="setting-header"><label for="drift-cover">Show album cover</label><input id="drift-cover" type="checkbox"></div></div>
+        <div id="drift-blackness-setting" class="setting" hidden><div class="setting-header"><label for="drift-blackness">Black amount</label><output id="drift-blackness-value">35%</output></div><input id="drift-blackness" type="range" min="0" max="100" step="1"></div>
+      </div>
+      <div id="weather-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="weather-mode">Weather source</label></div><select id="weather-mode"><option value="live">Live weather</option><option value="clear">Preview · clear</option><option value="cloud">Preview · cloudy</option><option value="rain">Preview · rain</option><option value="snow">Preview · snow</option><option value="fog">Preview · fog</option><option value="storm">Preview · storm</option></select></div>
+        <div id="weather-city-setting" class="setting"><div class="setting-header"><label for="weather-city">City</label></div><input id="weather-city" class="text-input" type="text" maxlength="100" autocomplete="off"><div class="actions"><button id="weather-city-save" class="action secondary" type="button">Set city</button></div></div>
+        <div id="weather-hour-setting" class="setting" hidden><div class="setting-header"><label for="weather-hour">Preview time</label><output id="weather-hour-value">13:00</output></div><input id="weather-hour" type="range" min="0" max="23" step="1"></div>
+      </div>
+      <p id="empty-options" class="empty-options" hidden>This scene has no appearance settings yet.</p>
+    </section>
 
     <div class="section-head"><h2>Spotify account</h2><span id="spotify-state" class="hint">Checking…</span></div>
     <section class="spotify-card" aria-label="Spotify connection">
@@ -143,7 +170,7 @@
     const canvas = $("preview"), context = canvas.getContext("2d", {willReadFrequently: false});
     const pixels = document.createElement("canvas"); pixels.width = pixels.height = 64;
     const pixelContext = pixels.getContext("2d", {willReadFrequently: true});
-    let state = null, frameBusy = false, stateBusy = false, sliderBusy = false;
+    let state = null, frameBusy = false, stateBusy = false, sliderBusy = false, sceneSliderBusy = false;
     let spotifyFlow = null, spotifyBusy = false, spotifyStatusBusy = false;
     let toastTimer;
 
@@ -168,9 +195,57 @@
         button.classList.toggle("selected", selected);
         button.setAttribute("aria-pressed", String(selected));
       });
+      renderSceneOptions(next);
       if (next.restart_required && !$("notice").classList.contains("error")) {
         notice("GPIO slowdown saved. Restart the controller on the Pi to apply it.");
       }
+    }
+    function renderSceneOptions(next) {
+      const scene = next.scene;
+      $("scene-options-title").textContent = (sceneNames[scene]?.[0] || scene) + " settings";
+      for (const name of ["clock", "spotify", "weather"]) $(name + "-options").hidden = scene !== name;
+      $("empty-options").hidden = ["clock", "spotify", "weather"].includes(scene);
+      if (scene === "clock") {
+        $("clock-theme").value = next.theme;
+        $("clock-numbers").checked = !next.no_numbers;
+        $("clock-ticks").checked = !next.no_ticks;
+        if (!sceneSliderBusy) {
+          $("hand-length").value = next.hand_length_percent;
+          $("hand-width").value = next.hand_width_percent;
+        }
+        $("hand-length-value").textContent = $("hand-length").value + "%";
+        $("hand-width-value").textContent = $("hand-width").value + "%";
+      } else if (scene === "spotify") {
+        $("spotify-style").value = next.spotify_style;
+        $("spotify-progress").checked = !next.no_progress;
+        $("drift-cover").checked = !next.no_drift_cover;
+        $("progress-setting").hidden = next.spotify_style !== "cover";
+        $("drift-cover-setting").hidden = next.spotify_style !== "colour-drift";
+        $("drift-blackness-setting").hidden = next.spotify_style !== "colour-drift";
+        if (!sceneSliderBusy) $("drift-blackness").value = next.drift_blackness;
+        $("drift-blackness-value").textContent = $("drift-blackness").value + "%";
+      } else if (scene === "weather") {
+        $("weather-mode").value = next.weather_demo || "live";
+        $("weather-city-setting").hidden = !!next.weather_demo;
+        $("weather-hour-setting").hidden = !next.weather_demo;
+        if (document.activeElement !== $("weather-city")) $("weather-city").value = next.weather_city;
+        if (!sceneSliderBusy) $("weather-hour").value = next.weather_hour;
+        $("weather-hour-value").textContent = String($("weather-hour").value).padStart(2, "0") + ":00";
+      }
+    }
+    function setSceneOption(key, value) {
+      if (state) return update("scene-options", {scene: state.scene, changes: {[key]: value}});
+    }
+    function bindSceneSlider(id, key, format) {
+      $(id).addEventListener("input", event => {
+        sceneSliderBusy = true;
+        $(id + "-value").textContent = format(event.target.value);
+      });
+      $(id).addEventListener("change", async event => {
+        await setSceneOption(key, Number(event.target.value));
+        sceneSliderBusy = false;
+        if (state) renderSceneOptions(state);
+      });
     }
     function renderSpotifyStatus(status) {
       const idInput = $("spotify-client-id");
@@ -286,6 +361,21 @@
       sliderBusy = true;
       $("brightness-value").textContent = event.target.value + "%";
     });
+    $("clock-theme").addEventListener("change", event => setSceneOption("theme", event.target.value));
+    $("clock-numbers").addEventListener("change", event => setSceneOption("no_numbers", !event.target.checked));
+    $("clock-ticks").addEventListener("change", event => setSceneOption("no_ticks", !event.target.checked));
+    bindSceneSlider("hand-length", "hand_length_percent", value => value + "%");
+    bindSceneSlider("hand-width", "hand_width_percent", value => value + "%");
+    $("spotify-style").addEventListener("change", event => setSceneOption("spotify_style", event.target.value));
+    $("spotify-progress").addEventListener("change", event => setSceneOption("no_progress", !event.target.checked));
+    $("drift-cover").addEventListener("change", event => setSceneOption("no_drift_cover", !event.target.checked));
+    bindSceneSlider("drift-blackness", "drift_blackness", value => value + "%");
+    $("weather-mode").addEventListener("change", event => setSceneOption("weather_demo", event.target.value === "live" ? null : event.target.value));
+    $("weather-city-save").addEventListener("click", () => setSceneOption("weather_city", $("weather-city").value.trim()));
+    $("weather-city").addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); $("weather-city-save").click(); }
+    });
+    bindSceneSlider("weather-hour", "weather_hour", value => String(value).padStart(2, "0") + ":00");
     $("brightness").addEventListener("change", async event => {
       await update("brightness", {brightness: Number(event.target.value)});
       sliderBusy = false;
