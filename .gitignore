@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.preview/
+preview.png
+.spotify/
+.env
+.pytest_cache/
+*.egg-info/
+led_matrix_pi.zip
