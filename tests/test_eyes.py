@@ -31,6 +31,22 @@ class EyesTests(unittest.TestCase):
         self.assertIsNotNone(ImageChops.difference(idle, blink).getbbox())
         self.assertLess(sum(blink.getpixel((11, 32))), sum(idle.getpixel((11, 32))))
 
+    def test_rates_change_timing_without_resetting_current_gaze(self):
+        slow = EyesAnimator(now=0, seed=9, movement_rate=0.5, blink_rate=0.5)
+        fast = EyesAnimator(now=0, seed=9, movement_rate=2, blink_rate=2)
+        self.assertLess(fast.next_move, slow.next_move)
+        self.assertLess(fast.next_blink, slow.next_blink)
+
+        animator = EyesAnimator(now=0, seed=9)
+        during_move = animator.next_move + 0.05
+        before = animator.pose(during_move)
+        animator.set_rates(2, 0.5, during_move)
+        after = animator.pose(during_move)
+        self.assertAlmostEqual(after.gaze_x, before.gaze_x)
+        self.assertAlmostEqual(after.gaze_y, before.gaze_y)
+        self.assertEqual(animator.movement_rate, 2)
+        self.assertEqual(animator.blink_rate, 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()

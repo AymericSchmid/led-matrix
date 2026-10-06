@@ -31,7 +31,11 @@ class HeadlessScene:
         self.auto_spotify_login = auto_spotify_login
         self.spotify_data_dir = spotify_data_dir or SPOTIFY_DATA_DIR
         self.started = time.monotonic()
-        self.eyes = EyesAnimator(self.started) if args.scene == "eyes" else None
+        self.eyes = EyesAnimator(
+            self.started,
+            movement_rate=getattr(args, "eyes_movement_rate", 100) / 100,
+            blink_rate=getattr(args, "eyes_blink_rate", 100) / 100,
+        ) if args.scene == "eyes" else None
         self.spotify_worker = None
         self.spotify_view = SpotifyView(waiting_frame(), "Waiting for Spotify…")
         self.weather_worker = None
@@ -78,6 +82,10 @@ class HeadlessScene:
             night = nighttime_reference()
             return render_moon_frame(moon_phase(night)), f"Moon · {night.astimezone():%d %b %Y}"
         if args.scene == "eyes":
+            self.eyes.set_rates(
+                getattr(args, "eyes_movement_rate", 100) / 100,
+                getattr(args, "eyes_blink_rate", 100) / 100, now,
+            )
             return render_eyes_frame(self.eyes.pose(now)), "Eyes"
         if args.scene == "walker":
             phase = 2 * math.pi * (now - self.started) / STEP_SECONDS

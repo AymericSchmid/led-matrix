@@ -115,6 +115,16 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(service.source.args.weather_hour, 23)
                 service.set_scene_options("weather", {"weather_demo": "rain"})
                 self.assertEqual(weather_kind(service.source.weather.code), "rain")
+                service.set_scene_options("eyes", {
+                    "eyes_movement_rate": 175, "eyes_blink_rate": 50,
+                })
+                service.select_scene("eyes")
+                animator = service.source.eyes
+                service.set_scene_options("eyes", {"eyes_movement_rate": 200})
+                service.source.frame()
+                self.assertIs(service.source.eyes, animator)
+                self.assertEqual(animator.movement_rate, 2)
+                self.assertEqual(animator.blink_rate, 0.5)
             finally:
                 service.stop()
 
@@ -123,6 +133,8 @@ class ControlServiceTests(unittest.TestCase):
                 self.assertEqual(restarted.state()["theme"], "dark")
                 self.assertEqual(restarted.state()["spotify_style"], "colour-drift")
                 self.assertEqual(restarted.state()["weather_demo"], "rain")
+                self.assertEqual(restarted.state()["eyes_movement_rate"], 200)
+                self.assertEqual(restarted.state()["eyes_blink_rate"], 50)
             finally:
                 restarted.stop()
 
@@ -138,6 +150,8 @@ class ControlServiceTests(unittest.TestCase):
                     ("weather", {"weather_hour": 24}),
                     ("weather", {"weather_city": " "}),
                     ("spotify", {"drift_blackness": -1}),
+                    ("eyes", {"eyes_movement_rate": 0}),
+                    ("eyes", {"eyes_blink_rate": 301}),
                     ("moon", {"theme": "dark"}),
                     ("clock", {"theme": "dark", "no_ticks": 1}),
                 ):

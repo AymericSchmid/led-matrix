@@ -120,6 +120,10 @@
         <div id="weather-city-setting" class="setting"><div class="setting-header"><label for="weather-city">City</label></div><input id="weather-city" class="text-input" type="text" maxlength="100" autocomplete="off"><div class="actions"><button id="weather-city-save" class="action secondary" type="button">Set city</button></div></div>
         <div id="weather-hour-setting" class="setting" hidden><div class="setting-header"><label for="weather-hour">Preview time</label><output id="weather-hour-value">13:00</output></div><input id="weather-hour" type="range" min="0" max="23" step="1"></div>
       </div>
+      <div id="eyes-options" hidden>
+        <div class="setting"><div class="setting-header"><label for="eyes-movement-rate">Gaze movement</label><output id="eyes-movement-rate-value">100%</output></div><input id="eyes-movement-rate" type="range" min="25" max="300" step="25"><p>How often and how quickly the eyes look around. 100% is the original pace.</p></div>
+        <div class="setting"><div class="setting-header"><label for="eyes-blink-rate">Blink frequency</label><output id="eyes-blink-rate-value">100%</output></div><input id="eyes-blink-rate" type="range" min="25" max="300" step="25"><p>How often the eyes blink. The blink itself stays natural.</p></div>
+      </div>
       <p id="empty-options" class="empty-options" hidden>This scene has no appearance settings yet.</p>
     </section>
 
@@ -203,8 +207,8 @@
     function renderSceneOptions(next) {
       const scene = next.scene;
       $("scene-options-title").textContent = (sceneNames[scene]?.[0] || scene) + " settings";
-      for (const name of ["clock", "spotify", "weather"]) $(name + "-options").hidden = scene !== name;
-      $("empty-options").hidden = ["clock", "spotify", "weather"].includes(scene);
+      for (const name of ["clock", "spotify", "weather", "eyes"]) $(name + "-options").hidden = scene !== name;
+      $("empty-options").hidden = ["clock", "spotify", "weather", "eyes"].includes(scene);
       if (scene === "clock") {
         $("clock-theme").value = next.theme;
         $("clock-numbers").checked = !next.no_numbers;
@@ -231,6 +235,13 @@
         if (document.activeElement !== $("weather-city")) $("weather-city").value = next.weather_city;
         if (!sceneSliderBusy) $("weather-hour").value = next.weather_hour;
         $("weather-hour-value").textContent = String($("weather-hour").value).padStart(2, "0") + ":00";
+      } else if (scene === "eyes") {
+        if (!sceneSliderBusy) {
+          $("eyes-movement-rate").value = next.eyes_movement_rate;
+          $("eyes-blink-rate").value = next.eyes_blink_rate;
+        }
+        $("eyes-movement-rate-value").textContent = $("eyes-movement-rate").value + "%";
+        $("eyes-blink-rate-value").textContent = $("eyes-blink-rate").value + "%";
       }
     }
     function setSceneOption(key, value) {
@@ -376,6 +387,8 @@
       if (event.key === "Enter") { event.preventDefault(); $("weather-city-save").click(); }
     });
     bindSceneSlider("weather-hour", "weather_hour", value => String(value).padStart(2, "0") + ":00");
+    bindSceneSlider("eyes-movement-rate", "eyes_movement_rate", value => value + "%");
+    bindSceneSlider("eyes-blink-rate", "eyes_blink_rate", value => value + "%");
     $("brightness").addEventListener("change", async event => {
       await update("brightness", {brightness: Number(event.target.value)});
       sliderBusy = false;

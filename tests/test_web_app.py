@@ -43,6 +43,7 @@ class WebAppTests(unittest.TestCase):
                     self.assertIn('id="clock-theme"', page.text)
                     self.assertIn('id="spotify-style"', page.text)
                     self.assertIn('id="weather-mode"', page.text)
+                    self.assertIn('id="eyes-movement-rate"', page.text)
                     self.assertEqual(client.get("/api/state").json()["scene"], "clock")
                     scene = client.put("/api/scene", json={"scene": "circle"})
                     self.assertEqual(scene.status_code, 200)
@@ -67,6 +68,11 @@ class WebAppTests(unittest.TestCase):
                     })
                     self.assertEqual(invalid.status_code, 400)
                     self.assertEqual(client.get("/api/state").json()["theme"], "dark")
+                    eyes = client.put("/api/scene-options", json={
+                        "scene": "eyes", "changes": {"eyes_movement_rate": 150, "eyes_blink_rate": 75},
+                    })
+                    self.assertEqual(eyes.status_code, 200)
+                    self.assertEqual(eyes.json()["eyes_movement_rate"], 150)
                     with patch("headless_scene.configured_client_id", return_value=""):
                         self.assertEqual(client.put("/api/scene", json={"scene": "spotify"}).status_code, 409)
                     self.assertEqual(client.get("/api/state").json()["scene"], "circle")

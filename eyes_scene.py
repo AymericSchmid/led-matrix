@@ -19,18 +19,47 @@ class EyesPose:
 class EyesAnimator:
     """Schedule irregular gaze shifts, blinks, occasional winks and double blinks."""
 
-    def __init__(self, now: float = 0.0, seed: int | None = None) -> None:
+    def __init__(
+        self, now: float = 0.0, seed: int | None = None, *,
+        movement_rate: float = 1.0, blink_rate: float = 1.0,
+    ) -> None:
+        if movement_rate <= 0 or blink_rate <= 0:
+            raise ValueError("Eye animation rates must be positive.")
         self.random = random.Random(seed)
+        self.movement_rate = movement_rate
+        self.blink_rate = blink_rate
         self.gaze_from = (0.0, 0.0)
         self.gaze_to = (0.0, 0.0)
         self.move_start = now
         self.move_end = now
-        self.next_move = now + self.random.uniform(0.5, 2.4)
+        self.next_move = now + self.random.uniform(0.5, 2.4) / movement_rate
         self.blink_start = float("-inf")
         self.blink_duration = 0.32
-        self.next_blink = now + self.random.uniform(2.0, 5.5)
+        self.next_blink = now + self.random.uniform(2.0, 5.5) / blink_rate
         self.blink_eye = "both"
         self.double_pending = False
+
+    def set_rates(self, movement_rate: float, blink_rate: float, now: float) -> None:
+        """Retiming upcoming actions keeps the current gaze and blink intact."""
+        if movement_rate <= 0 or blink_rate <= 0:
+            raise ValueError("Eye animation rates must be positive.")
+        if (movement_rate, blink_rate) == (self.movement_rate, self.blink_rate):
+            return
+        self.pose(now)
+        if movement_rate != self.movement_rate:
+            factor = self.movement_rate / movement_rate
+            if now < self.move_end:
+                current_gaze = self._gaze_at(now)
+                self.gaze_from = current_gaze
+                self.move_start = now
+                self.move_end = now + (self.move_end - now) * factor
+            self.next_move = now + (self.next_move - now) * factor
+            self.movement_rate = movement_rate
+        if blink_rate != self.blink_rate:
+            factor = self.blink_rate / blink_rate
+            anchor = max(now, self.blink_start + self.blink_duration)
+            self.next_blink = anchor + max(0, self.next_blink - anchor) * factor
+            self.blink_rate = blink_rate
 
     def _gaze_at(self, now: float) -> tuple[float, float]:
         if now >= self.move_end:
@@ -46,8 +75,8 @@ class EyesAnimator:
             self.gaze_from = self._gaze_at(event_time)
             self.gaze_to = (self.random.uniform(-4.6, 4.6), self.random.uniform(-2.2, 2.2))
             self.move_start = event_time
-            self.move_end = event_time + self.random.uniform(0.12, 0.55)
-            self.next_move = self.move_end + self.random.uniform(0.55, 3.4)
+            self.move_end = event_time + self.random.uniform(0.12, 0.55) / self.movement_rate
+            self.next_move = self.move_end + self.random.uniform(0.55, 3.4) / self.movement_rate
 
         while now >= self.next_blink:
             event_time = self.next_blink
@@ -55,10 +84,10 @@ class EyesAnimator:
             self.blink_duration = self.random.uniform(0.28, 0.42)
             self.blink_eye = self.random.choices(("both", "left", "right"), (9, 1, 1))[0]
             if not self.double_pending and self.random.random() < 0.23:
-                self.next_blink = event_time + self.blink_duration + self.random.uniform(0.12, 0.22)
+                self.next_blink = event_time + self.blink_duration + self.random.uniform(0.12, 0.22) / self.blink_rate
                 self.double_pending = True
             else:
-                self.next_blink = event_time + self.blink_duration + self.random.uniform(2.2, 6.0)
+                self.next_blink = event_time + self.blink_duration + self.random.uniform(2.2, 6.0) / self.blink_rate
                 self.double_pending = False
 
         gaze_x, gaze_y = self._gaze_at(now)

@@ -28,6 +28,7 @@ SCENE_OPTIONS = {
     "clock": frozenset(("theme", "no_numbers", "no_ticks", "hand_length_percent", "hand_width_percent")),
     "spotify": frozenset(("spotify_style", "no_progress", "no_drift_cover", "drift_blackness")),
     "weather": frozenset(("weather_city", "weather_demo", "weather_hour")),
+    "eyes": frozenset(("eyes_movement_rate", "eyes_blink_rate")),
 }
 DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 
@@ -49,6 +50,8 @@ class ControlSettings:
     weather_city: str = DEFAULT_CITY
     weather_demo: str | None = None
     weather_hour: int = 13
+    eyes_movement_rate: int = 100
+    eyes_blink_rate: int = 100
     spotify_client_id: str | None = None
 
     def scene_args(self) -> Namespace:
@@ -224,10 +227,14 @@ class ControlService:
         for key, value in changes.items():
             if key in ("no_numbers", "no_ticks", "no_progress", "no_drift_cover"):
                 valid = type(value) is bool
-            elif key in ("hand_length_percent", "hand_width_percent", "drift_blackness", "weather_hour"):
+            elif key in (
+                "hand_length_percent", "hand_width_percent", "drift_blackness", "weather_hour",
+                "eyes_movement_rate", "eyes_blink_rate",
+            ):
                 limits = {
                     "hand_length_percent": (60, 130), "hand_width_percent": (50, 250),
                     "drift_blackness": (0, 100), "weather_hour": (0, 23),
+                    "eyes_movement_rate": (25, 300), "eyes_blink_rate": (25, 300),
                 }
                 lower, upper = limits[key]
                 valid = type(value) is int and lower <= value <= upper
