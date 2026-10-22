@@ -9,3 +9,6 @@ preview.png
 .pytest_cache/
 *.egg-info/
 led_matrix_pi.zip
+
+.worktrees/
+.superpowers/
