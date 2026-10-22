@@ -128,19 +128,18 @@ class SinricAdapter:
         self.thread.start()
 
     def _thread_main(self):
-        # Runner cancels/gathers SDK tasks and drains to_thread calls before loop closure.
-        with asyncio.Runner() as runner:
-            self.loop = runner.get_loop()
-            self.task = self.loop.create_task(self._run())
-            self.ready.set()
-            try:
-                runner.run(self._await_task())
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self.loop = None
+        # asyncio.run (also on Python 3.10) gathers tasks and drains to_thread calls.
+        try:
+            asyncio.run(self._owned_run())
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.loop = None
 
-    async def _await_task(self):
+    async def _owned_run(self):
+        self.loop = asyncio.get_running_loop()
+        self.task = asyncio.create_task(self._run())
+        self.ready.set()
         await self.task
 
     async def _run(self):

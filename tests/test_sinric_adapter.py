@@ -190,6 +190,17 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
 
 class OwnershipTests(unittest.TestCase):
+    def test_owner_works_without_python_311_runner(self):
+        # Python 3.10 has asyncio.run, but no Runner class.
+        from types import SimpleNamespace
+        compatible = SimpleNamespace(**{name: getattr(asyncio, name) for name in dir(asyncio) if name != 'Runner'})
+        with patch('sinric_adapter.asyncio', compatible):
+            adapter = SinricAdapter(Mock(), SETTINGS, transport_factory=FakeTransport)
+            adapter.start()
+            self.assertTrue(adapter.ready.wait(1))
+            adapter.stop()
+            self.assertFalse(adapter.thread.is_alive())
+
     def test_thread_shutdown_and_cancel_during_begin(self):
         for blocked in (False, True):
             instances = []
