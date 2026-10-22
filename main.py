@@ -1,5 +1,6 @@
 """A 64 x 64 LED matrix app with desktop and Raspberry Pi outputs."""
 
+from scene_catalogue import SCENE_IDS
 import argparse
 from datetime import datetime
 import math
@@ -582,7 +583,7 @@ def main() -> None:
     parser.add_argument(
         "--snapshot", type=Path, metavar="PNG", help="Save the LED preview without opening a window."
     )
-    parser.add_argument("--scene", choices=("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi", "shadow"), default="clock")
+    parser.add_argument("--scene", choices=SCENE_IDS, default="clock")
     parser.add_argument("--shadow-speed", type=int, default=100, help="Shadow animation pace, 25–200 percent.")
     parser.add_argument("--shadow-intensity", type=int, default=100, help="Shadow distortion and approach, 25–100 percent.")
     parser.add_argument("--shadow-frequency", type=int, default=100, help="Random shadow appearance frequency, 5–200 percent.")

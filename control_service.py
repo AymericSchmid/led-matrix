@@ -23,15 +23,8 @@ from spotify_scene import SPOTIFY_STYLES
 from weather_scene import DEFAULT_CITY, DEMO_WEATHERS
 
 
-SCENES = ("clock", "circle", "spotify", "weather", "moon", "eyes", "walker", "kintsugi", "shadow")
-SCENE_OPTIONS = {
-    "clock": frozenset(("theme", "no_numbers", "no_ticks", "hand_length_percent", "hand_width_percent")),
-    "spotify": frozenset(("spotify_style", "no_progress", "no_drift_cover", "drift_blackness")),
-    "weather": frozenset(("weather_city", "weather_demo", "weather_hour")),
-    "eyes": frozenset(("eyes_movement_frequency", "eyes_movement_speed", "eyes_blink_rate")),
-    "kintsugi": frozenset(("kintsugi_theme", "kintsugi_speed", "kintsugi_density")),
-    "shadow": frozenset(("shadow_speed", "shadow_frequency", "shadow_intensity")),
-}
+from scene_catalogue import SCENE_IDS as SCENES, SCENE_OPTIONS, scene_metadata
+
 DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 
 
@@ -207,6 +200,7 @@ class ControlService:
                 "caption": self.caption,
                 "hardware": self.hardware,
                 "scenes": SCENES,
+                "scene_metadata": scene_metadata(),
                 "restart_required": self.settings.gpio_slowdown != self.applied_gpio_slowdown,
             })
             return result
