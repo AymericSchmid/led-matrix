@@ -6,10 +6,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 import uvicorn
 
 from control_service import ControlService
+from configuration import load_sinric_settings
+from sinric_adapter import SinricAdapter
 from spotify_client import SpotifyError
 
 
@@ -26,7 +28,11 @@ class SceneOptionsChange(BaseModel):
 
 
 class BrightnessChange(BaseModel):
-    brightness: int
+    brightness: StrictInt
+
+
+class PowerChange(BaseModel):
+    power: StrictBool
 
 
 class SlowdownChange(BaseModel):
@@ -42,8 +48,16 @@ class SpotifyLoginFinish(BaseModel):
     callback_url: str = Field(max_length=4096)
 
 
-def create_app(service: ControlService) -> FastAPI:
+def create_app(service: ControlService, integration: SinricAdapter | None = None) -> FastAPI:
     app = FastAPI(title="Matrix control", docs_url=None, redoc_url=None)
+
+    def response(snapshot: dict) -> dict:
+        return {**snapshot, "integration": integration.status() if integration else
+                {"state": "disabled", "message": "Sinric is not configured."}}
+
+    @app.put("/api/power")
+    def set_power(change: PowerChange) -> dict:
+        return response(service.set_power(change.power))
 
     @app.get("/", include_in_schema=False)
     def home() -> FileResponse:
@@ -51,7 +65,7 @@ def create_app(service: ControlService) -> FastAPI:
 
     @app.get("/api/state")
     def state() -> dict:
-        return service.state()
+        return response(service.state())
 
     @app.get("/api/frame.png")
     def frame() -> Response:
@@ -63,7 +77,7 @@ def create_app(service: ControlService) -> FastAPI:
     @app.put("/api/scene")
     def select_scene(change: SceneChange) -> dict:
         try:
-            return service.select_scene(change.scene)
+            return response(service.select_scene(change.scene))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         except SpotifyError as error:
@@ -74,21 +88,21 @@ def create_app(service: ControlService) -> FastAPI:
     @app.put("/api/brightness")
     def set_brightness(change: BrightnessChange) -> dict:
         try:
-            return service.set_brightness(change.brightness)
+            return response(service.set_brightness(change.brightness))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.put("/api/scene-options")
     def set_scene_options(change: SceneOptionsChange) -> dict:
         try:
-            return service.set_scene_options(change.scene, change.changes)
+            return response(service.set_scene_options(change.scene, change.changes))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.put("/api/gpio-slowdown")
     def set_gpio_slowdown(change: SlowdownChange) -> dict:
         try:
-            return service.set_gpio_slowdown(change.gpio_slowdown)
+            return response(service.set_gpio_slowdown(change.gpio_slowdown))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -148,12 +162,25 @@ def main() -> None:
     args = parser.parse_args()
 
     service = ControlService(hardware=args.hardware, spotify_client_id=args.spotify_client_id)
-    service.start()
+    integration = None
     try:
+        service.start()
+        configuration_error = ""
+        try:
+            settings = load_sinric_settings()
+        except ValueError as error:
+            settings, configuration_error = None, str(error)
+        integration = SinricAdapter(service, settings, configuration_error=configuration_error)
+        integration.start()
         print(f"Matrix control: http://{args.host}:{args.port}", flush=True)
-        uvicorn.run(create_app(service), host=args.host, port=args.port, workers=1, access_log=False)
+        uvicorn.run(create_app(service, integration), host=args.host, port=args.port, workers=1, access_log=False)
     finally:
-        service.stop()
+        try:
+            if integration is not None:
+                integration.stop()
+        finally:
+            service.stop()
+
 
 
 if __name__ == "__main__":

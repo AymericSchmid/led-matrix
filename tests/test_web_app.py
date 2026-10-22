@@ -5,7 +5,9 @@ import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
+from io import BytesIO
+from PIL import Image
 from urllib.parse import parse_qs, urlsplit
 
 try:
@@ -23,6 +25,94 @@ CLIENT_ID = "0123456789abcdef0123456789abcdef"
 
 @unittest.skipIf(TestClient is None, "install requirements-web.txt and httpx for API checks")
 class WebAppTests(unittest.TestCase):
+    def test_power_strict_brightness_and_status(self):
+        with TemporaryDirectory() as directory:
+            service = ControlService(store=SettingsStore(Path(directory) / 'state.db'))
+            self.addCleanup(service.stop)
+            integration = Mock()
+            integration.status.return_value = {'state': 'error', 'message': 'Check configuration.'}
+            with TestClient(create_app(service, integration)) as client:
+                service.set_brightness(40)
+                off = client.put('/api/power', json={'power': False})
+                self.assertEqual(off.status_code, 200)
+                self.assertFalse(off.json()['power'])
+                self.assertEqual(off.json()['brightness'], 40)
+                for key in ('scenes', 'scene_metadata', 'revision', 'scene_error', 'integration'):
+                    self.assertIn(key, off.json())
+                self.assertEqual(off.json()['integration']['state'], 'error')
+                self.assertIsNone(Image.open(BytesIO(client.get('/api/frame.png').content)).getbbox())
+                self.assertEqual(client.put('/api/brightness', json={'brightness': 0}).status_code, 200)
+                for endpoint, field, bad in [('brightness', 'brightness', [True, None, 1.5, '40']), ('power', 'power', [0, 1, None, 'on', 1.0])]:
+                    for value in bad:
+                        self.assertEqual(client.put('/api/' + endpoint, json={field: value}).status_code, 422)
+                    self.assertEqual(client.put('/api/' + endpoint, json={}).status_code, 422)
+                    self.assertEqual(client.put('/api/' + endpoint, content='{bad').status_code, 422)
+                self.assertEqual(client.put('/api/brightness', json={'brightness': 101}).status_code, 400)
+                with patch('headless_scene.configured_client_id', return_value=''):
+                    self.assertEqual(client.put('/api/scene', json={'scene': 'spotify'}).status_code, 409)
+                self.assertFalse(service.state()['power'])
+                self.assertTrue(client.put('/api/scene', json={'scene': 'circle'}).json()['power'])
+            with TestClient(create_app(service)) as client:
+                self.assertEqual(client.get('/api/state').json()['integration']['state'], 'disabled')
+
+    def run_main_fixture(self, *, config_error=None, service_error=None, adapter_error=None):
+        import web_app
+        calls = []
+        service, adapter = Mock(), Mock()
+        service.start.side_effect = service_error
+        service.stop.side_effect = lambda: calls.append('service.stop')
+        def stop():
+            calls.append('adapter.stop')
+            if adapter_error: raise adapter_error
+        adapter.stop.side_effect = stop
+        adapter.start.side_effect = lambda: calls.append('adapter.start')
+        def run(*args, **kwargs): calls.append('http.run')
+        with patch('sys.argv', ['web_app.py']), patch('web_app.ControlService', return_value=service), patch('web_app.SinricAdapter', return_value=adapter), patch('web_app.load_sinric_settings', side_effect=config_error, return_value=None), patch('web_app.create_app'), patch('web_app.uvicorn.run', side_effect=run):
+            if service_error or adapter_error:
+                with self.assertRaises(RuntimeError): web_app.main()
+            else:
+                web_app.main()
+        return calls
+
+    def test_main_shutdown_orders_adapter_before_service(self):
+        self.assertEqual(self.run_main_fixture()[-2:], ['adapter.stop', 'service.stop'])
+
+    def test_partial_config_keeps_http_running(self):
+        calls = self.run_main_fixture(config_error=ValueError('Missing SINRIC_DEVICE_ID'))
+        self.assertIn('http.run', calls)
+        self.assertEqual(calls[-2:], ['adapter.stop', 'service.stop'])
+
+    def check_integration_startup_error(self, error):
+        from sinric_adapter import SinricAdapter
+        from configuration import SinricSettings
+        with TemporaryDirectory() as directory:
+            service = ControlService(store=SettingsStore(Path(directory) / 'state.db'))
+            self.addCleanup(service.stop)
+            class BrokenTransport:
+                def __init__(self, *args): pass
+                async def start(self): raise error
+                async def close(self): pass
+            integration = SinricAdapter(service, SinricSettings('key', 'secret', 'device', 'scene'), transport_factory=BrokenTransport)
+            integration.start()
+            integration.thread.join(2)
+            self.addCleanup(integration.stop)
+            with TestClient(create_app(service, integration)) as client:
+                response = client.put('/api/brightness', json={'brightness': 42})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['brightness'], 42)
+                self.assertEqual(response.json()['integration']['state'], 'error')
+                self.assertNotIn('private-value', response.text)
+
+    def test_missing_sdk_keeps_http_running(self):
+        self.check_integration_startup_error(ImportError('private-value'))
+
+    def test_invalid_credentials_keep_http_running(self):
+        self.check_integration_startup_error(RuntimeError('private-value signed payload'))
+
+    def test_startup_failure_closes_open_resources(self):
+        self.assertEqual(self.run_main_fixture(service_error=RuntimeError('start')), ['service.stop'])
+        self.assertEqual(self.run_main_fixture(adapter_error=RuntimeError('stop'))[-2:], ['adapter.stop', 'service.stop'])
+
     def setUp(self):
         for target, value in (
             ("control_service.configured_env_client_id", ""),
@@ -58,7 +148,7 @@ class WebAppTests(unittest.TestCase):
                     slowdown = client.put("/api/gpio-slowdown", json={"gpio_slowdown": 3})
                     self.assertTrue(slowdown.json()["restart_required"])
                     self.assertEqual(client.put("/api/scene", json={"scene": "invalid"}).status_code, 400)
-                    self.assertEqual(client.put("/api/brightness", json={"brightness": 0}).status_code, 400)
+                    self.assertEqual(client.put("/api/brightness", json={"brightness": 0}).status_code, 200)
                     options = client.put("/api/scene-options", json={
                         "scene": "clock", "changes": {"theme": "dark", "hand_length_percent": 120},
                     })

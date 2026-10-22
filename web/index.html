@@ -97,6 +97,11 @@
       <div id="caption" class="caption">Starting the display…</div>
     </section>
 
+    <section class="settings" aria-label="Display power">
+      <div class="setting-header"><span>Display</span><button id="power" class="action secondary" type="button" aria-pressed="true">On</button></div>
+      <p id="sinric-status" role="status">Sinric: checking...</p>
+    </section>
+
     <div class="section-head"><h2>Choose a scene</h2><span class="hint">Tap to display</span></div>
     <section id="scenes" class="scene-grid" aria-label="Scenes"></section>
 
@@ -176,11 +181,7 @@
     <footer>Available to devices on the same Wi-Fi as your Raspberry Pi.</footer>
   </main>
   <script>
-    const sceneNames = {
-      clock: ["Clock", "◷"], circle: ["Circle", "◯"], spotify: ["Spotify", "♫"],
-      weather: ["Weather glass", "☀"], moon: ["Moon", "☾"],
-      eyes: ["Eyes", "◉"], walker: ["Night walker", "♟"], kintsugi: ["Kintsugi", "◇"], shadow: ["Impossible shadow", "◌"]
-    };
+    let sceneNames = {};
     const $ = id => document.getElementById(id);
     const canvas = $("preview"), context = canvas.getContext("2d", {willReadFrequently: false});
     const pixels = document.createElement("canvas"); pixels.width = pixels.height = 64;
@@ -198,6 +199,10 @@
     }
     function renderState(next) {
       state = next;
+      $("power").setAttribute("aria-pressed", String(next.power));
+      $("power").textContent = next.power ? "On" : "Off";
+      const integration = next.integration || {state: "disabled", message: ""};
+      $("sinric-status").textContent = "Sinric: " + integration.state + (integration.message ? " ? " + integration.message : "");
       $("status").className = "status";
       $("status").querySelector("span").textContent = "Connected";
       $("mode").textContent = next.hardware ? "On the matrix · 64 × 64" : "Preview only · 64 × 64";
@@ -336,11 +341,11 @@
         buttons.forEach(id => $(id).disabled = false);
       }
     }
-    function makeScenes(names) {
+    function makeScenes(metadata) {
       const grid = $("scenes"); grid.replaceChildren();
-      names.forEach(name => {
+      sceneNames = Object.fromEntries(metadata.map(item => [item.id, [item.label, item.icon]]));
+      metadata.forEach(({id: name, label, icon}) => {
         const button = document.createElement("button");
-        const [label, icon] = sceneNames[name] || [name, "◈"];
         button.className = "scene";
         button.dataset.scene = name;
         button.innerHTML = '<span class="icon" aria-hidden="true"></span><span class="name"></span>';
@@ -357,7 +362,7 @@
         const response = await fetch("/api/state", {cache: "no-store"});
         if (!response.ok) throw Error("Cannot reach the controller");
         const next = await response.json();
-        if (!state) makeScenes(next.scenes);
+        if (!state) makeScenes(next.scene_metadata);
         renderState(next);
       } catch (error) {
         $("status").className = "status offline";
@@ -398,6 +403,7 @@
       } catch (_) { /* Keep the last visible frame during a short connection loss. */ }
       finally { frameBusy = false; }
     }
+    $("power").addEventListener("click", () => { if (state) update("power", {power: !state.power}); });
     $("brightness").addEventListener("input", event => {
       sliderBusy = true;
       $("brightness-value").textContent = event.target.value + "%";
