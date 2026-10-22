@@ -205,6 +205,7 @@ class OwnershipTests(unittest.TestCase):
         for blocked in (False, True):
             instances = []
             cancelled = Event()
+            created = Event()
             class Transport(FakeTransport):
                 async def start(self):
                     self.started.set()
@@ -218,12 +219,14 @@ class OwnershipTests(unittest.TestCase):
             def factory(*args):
                 transport = Transport(*args)
                 instances.append(transport)
+                created.set()
                 return transport
             service = Mock()
             service.state.return_value = dict(power=True, brightness=80, scene='clock', revision=0)
             adapter = SinricAdapter(service, SETTINGS, transport_factory=factory)
             adapter.start()
             self.assertTrue(adapter.ready.wait(1))
+            self.assertTrue(created.wait(1))
             self.assertTrue(instances[0].started.wait(1))
             adapter.stop()
             self.assertFalse(adapter.thread.is_alive())
