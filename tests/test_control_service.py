@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from threading import Barrier
+from threading import Barrier, Event
 import json
 from urllib.parse import parse_qs, urlsplit
 
@@ -21,6 +21,101 @@ from weather_scene import weather_kind
 
 
 class ControlServiceTests(unittest.TestCase):
+    def test_off_blanks_even_if_renderer_raises(self):
+        service = self.service_fixture()
+        output = Mock()
+        service.output = output
+        service.source.frame = Mock(side_effect=RuntimeError('broken'))
+        service.set_power(False)
+        self.assertIsNone(Image.open(BytesIO(service.frame_png())).getbbox())
+        service._render_once()
+        self.assertIsNone(output.show.call_args.args[0].getbbox())
+        service.source.frame.assert_not_called()
+
+    def test_saved_off_never_flashes(self):
+        service = self.service_fixture()
+        service.set_power(False)
+        output = Mock()
+        shown = Event()
+        output.show.side_effect = lambda frame: shown.set()
+        with patch('hardware_output.MatrixOutput', return_value=output):
+            restarted = ControlService(hardware=True, store=service.store)
+        self.addCleanup(restarted.stop)
+        restarted.start()
+        self.assertTrue(shown.wait(1))
+        for call in output.show.call_args_list:
+            self.assertIsNone(call.args[0].getbbox())
+
+    def test_moon_power_wakes(self):
+        service = self.service_fixture()
+        service.source.close()
+        source = Mock(interval=60)
+        artwork = Image.new('RGB', (64, 64), 'red')
+        source.frame.return_value = artwork, 'Moon test'
+        service.source = source
+        output = Mock()
+        shown = Event()
+        output.show.side_effect = lambda frame: shown.set()
+        service.output = output
+        service.start()
+        self.assertTrue(shown.wait(1))
+        for power in (False, True, False, True):
+            shown.clear()
+            service.set_power(power)
+            self.assertTrue(shown.wait(1))
+            last = output.show.call_args.args[0]
+            self.assertEqual(last.tobytes(), artwork.tobytes() if power else bytes(64 * 64 * 3))
+
+    def test_scene_selection_on_and_failure_preserves_state(self):
+        service = self.service_fixture()
+        service.set_power(False)
+        self.assertTrue(service.select_scene('clock')['power'])
+        service.set_power(False)
+        self.assertTrue(service.select_scene('circle')['power'])
+        service.set_power(False)
+        before = service.state()
+        with patch('headless_scene.configured_client_id', return_value=''), self.assertRaises(SpotifyError):
+            service.select_scene('spotify')
+        self.assertEqual(service.state(), before)
+
+    def test_failed_saved_scene_recovers(self):
+        service = self.service_fixture()
+        service.store.save(replace(service.settings, scene='spotify'))
+        with patch('headless_scene.configured_client_id', return_value=''):
+            recovered = ControlService(store=service.store)
+        self.addCleanup(recovered.stop)
+        self.assertEqual(recovered.state()['scene'], 'spotify')
+        self.assertIsNotNone(recovered.state()['scene_error'])
+        self.assertIsNone(recovered.source)
+        self.assertIsNone(Image.open(BytesIO(recovered.frame_png())).getbbox())
+        recovered.set_scene_options('spotify', {'no_progress': True})
+        self.assertTrue(recovered.select_scene('circle')['power'])
+        self.assertIsNone(recovered.state()['scene_error'])
+
+    def test_partial_source_and_startup_cleanup(self):
+        service = self.service_fixture()
+        old = service.source
+        candidate = Mock()
+        candidate.start.side_effect = RuntimeError('worker failed')
+        with patch.object(service, '_new_source', return_value=candidate), self.assertRaises(RuntimeError):
+            service.select_scene('circle')
+        candidate.close.assert_called_once()
+        self.assertIs(service.source, old)
+        output = Mock()
+        with patch('hardware_output.MatrixOutput', return_value=output), patch.object(service.store, 'save', side_effect=OSError('disk')):
+            with self.assertRaises(OSError):
+                ControlService(hardware=True, store=service.store)
+        output.close.assert_called_once()
+
+    def test_retry_failed_saved_scene(self):
+        service = self.service_fixture()
+        service.source.close()
+        service.source = None
+        service.scene_error = 'Scene unavailable'
+        self.assertTrue(service.select_scene('clock')['power'])
+        self.assertIsNotNone(service.source)
+        self.assertIsNone(service.state()['scene_error'])
+
     def service_fixture(self):
         directory = TemporaryDirectory()
         self.addCleanup(directory.cleanup)

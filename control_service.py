@@ -132,22 +132,27 @@ class ControlService:
                 brightness=self.settings.brightness,
                 gpio_slowdown=self.settings.gpio_slowdown,
             )
-        self.store.save(self.settings)
-        self.source = self._new_source(self.settings)
-        try:
-            self.source.start()
-        except Exception:
-            if self.output is not None:
-                self.output.close()
-            raise
         self.revision = 0
         self.lock = RLock()
         self.stopping = Event()
         self.wake = Event()
         self.thread = Thread(target=self._render_loop, daemon=True, name="matrix-render")
         self.frame = Image.new("RGB", (64, 64), "black")
-        self.caption = "Starting…"
+        self.caption = "Starting..."
         self.last_image = None
+        self.source = None
+        self.scene_error = None
+        self.closed = False
+        try:
+            self.store.save(self.settings)
+            try:
+                self._replace_source(self.settings)
+            except Exception:
+                self.scene_error = "Scene unavailable. Check its configuration or select another scene."
+                self.caption = self.scene_error
+        except BaseException:
+            self.stop()
+            raise
 
     def start(self) -> None:
         self.thread.start()
@@ -160,11 +165,18 @@ class ControlService:
 
     def _replace_source(self, settings: ControlSettings) -> None:
         new_source = self._new_source(settings)
-        new_source.start()
-        self.source.close()
+        try:
+            new_source.start()
+        except BaseException:
+            new_source.close()
+            raise
+        old_source = self.source
         self.source = new_source
+        self.scene_error = None
         self.last_image = None
         self.wake.set()
+        if old_source is not None:
+            old_source.close()
 
     def stop(self) -> None:
         self.stopping.set()
@@ -172,27 +184,44 @@ class ControlService:
         if self.thread.is_alive():
             self.thread.join()
         with self.lock:
-            self.source.close()
-            if self.output is not None:
-                self.output.close()
+            if self.closed:
+                return
+            self.closed = True
+            try:
+                if self.source is not None:
+                    self.source.close()
+            finally:
+                if self.output is not None:
+                    self.output.close()
+
+    def _render_once(self) -> float:
+        with self.lock:
+            if not self.settings.power or self.source is None:
+                frame = Image.new("RGB", (64, 64), "black")
+                caption = "Off" if not self.settings.power else self.scene_error
+                interval = 60.0
+            else:
+                interval = self.source.interval
+                try:
+                    frame, caption = self.source.frame()
+                except Exception:
+                    self.caption = "Render error. Select another scene or restart the controller."
+                    return interval
+            image = frame.tobytes()
+            if image != self.last_image:
+                if self.output is not None:
+                    self.output.show(frame)
+                self.frame = frame.copy()
+                self.last_image = image
+            self.caption = caption
+            return interval
 
     def _render_loop(self) -> None:
         while not self.stopping.is_set():
             with self.lock:
-                try:
-                    frame, caption = self.source.frame()
-                    image = frame.tobytes()
-                    if image != self.last_image:
-                        if self.output is not None:
-                            self.output.show(frame)
-                        self.frame = frame
-                        self.last_image = image
-                    self.caption = caption
-                except Exception as error:
-                    self.caption = f"Render error: {error}"
-                interval = self.source.interval
+                self.wake.clear()
+                interval = self._render_once()
             self.wake.wait(interval)
-            self.wake.clear()
 
     def state(self) -> dict:
         with self.lock:
@@ -201,6 +230,7 @@ class ControlService:
             result.update({
                 "caption": self.caption,
                 "revision": self.revision,
+                "scene_error": self.scene_error,
                 "hardware": self.hardware,
                 "scenes": SCENES,
                 "scene_metadata": scene_metadata(),
@@ -219,10 +249,9 @@ class ControlService:
         if scene not in SCENES:
             raise ValueError("Unknown scene.")
         with self.lock:
-            if scene == self.settings.scene:
-                return self.state()
-            new_settings = replace(self.settings, scene=scene)
-            self._replace_source(new_settings)
+            new_settings = replace(self.settings, scene=scene, power=True)
+            if scene != self.settings.scene or self.source is None:
+                self._replace_source(new_settings)
             self._commit_settings(new_settings)
             return self.state()
 
@@ -271,7 +300,7 @@ class ControlService:
             updated = replace(self.settings, **changes)
             if updated == self.settings:
                 return self.state()
-            if scene == self.settings.scene:
+            if scene == self.settings.scene and self.source is not None:
                 if scene == "weather" and any(
                     getattr(updated, key) != getattr(self.settings, key)
                     for key in ("weather_city", "weather_demo")
@@ -385,7 +414,13 @@ class ControlService:
         # Caller owns the RLock. One transaction is one revision.
         if settings != self.settings:
             self.store.save(settings)
+            power_changed = settings.power != self.settings.power
             self.settings = settings
+            if power_changed:
+                self.last_image = None
+                if not settings.power:
+                    self.frame = Image.new("RGB", (64, 64), "black")
+                    self.caption = "Off"
             self.revision += 1
             self.wake.set()
 
