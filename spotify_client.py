@@ -47,20 +47,9 @@ def validate_client_id(value: str) -> str:
 
 
 def dotenv_value(name: str, path: Path | None = None) -> str:
-    """Read a simple KEY=value setting without executing the file as a script."""
-    path = path or ENV_FILE
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return ""
-    for line in lines:
-        key, separator, value = line.partition("=")
-        if separator and key.strip() == name:
-            value = value.strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-                value = value[1:-1]
-            return value
-    return ""
+    """Compatibility wrapper retaining the Spotify ENV_FILE patch point."""
+    from configuration import dotenv_value as read_value
+    return read_value(name, path or ENV_FILE)
 
 
 def configured_env_client_id() -> str:
