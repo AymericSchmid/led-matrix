@@ -49,6 +49,12 @@ SDK singleton on close so stale callbacks, devices, or loop-bound locks cannot
 leak into another controller. SDK logging is disabled; status messages are owned
 by the app and never include raw exception text, keys or signed payloads.
 
+The pinned SDK stops after one failed reconnect attempt. The transport registers
+an error callback that rearms the SDK's existing retry task after failure unwinds,
+retaining its five-second backoff and cancellation path. It does not create a
+second connection or independent retry loop. A close guard prevents late errors
+from scheduling retries after shutdown.
+
 Before changing the pin, inspect the release source and run the real-SDK contract
 tests with network patched. Check dispatch, relative response tuples, signing over
 exact transmitted bytes, limiter results, queue avoidance, reconnect, cancellation

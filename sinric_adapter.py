@@ -66,6 +66,8 @@ class SinricAdapter:
                 # Zero acknowledges a wire value of zero, not the remembered brightness.
                 if field != 'brightness' or result['applied_brightness'] != 0:
                     self.acknowledged[field] = (result['revision'], result[field])
+                else:
+                    self.acknowledged.pop('brightness', None)
             return result
 
     async def _power(self, power):

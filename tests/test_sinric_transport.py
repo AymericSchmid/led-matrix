@@ -119,3 +119,44 @@ builtins.__import__ = blocked
 import sinric_transport
 '''
         subprocess.run([sys.executable, '-c', code], check=True, capture_output=True)
+
+
+@unittest.skipIf(SinricPro is None, 'optional: install requirements-sinric.txt')
+class ReconnectTests(unittest.IsolatedAsyncioTestCase):
+    async def test_repeated_connection_failures_use_existing_sdk_retry_task(self):
+        from types import SimpleNamespace
+        from sinricpro.core import websocket_client
+        retry_waiting, connected = asyncio.Event(), asyncio.Event()
+        permit = asyncio.Semaphore(0)
+        async def backoff(delay):
+            self.assertEqual(delay, 5)
+            retry_waiting.set()
+            await permit.acquire()
+        compatible = SimpleNamespace(**{name: getattr(asyncio, name) for name in dir(asyncio)})
+        compatible.sleep = backoff
+        callbacks = SinricCallbacks(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), connected.set, Mock())
+        transport = SinricTransport(SETTINGS, callbacks)
+        socket = Mock(close=AsyncMock())
+        hold = asyncio.Event()
+        async def messages(client): await hold.wait()
+        with patch.object(websocket_client, 'asyncio', compatible), patch('sinricpro.core.websocket_client.websockets.connect', new_callable=AsyncMock) as connect, patch.object(websocket_client.WebSocketClient, '_handle_messages', messages), patch.object(websocket_client.WebSocketClient, '_start_heartbeat'):
+            connect.side_effect = [OSError('offline'), OSError('still offline'), socket]
+            try:
+                await transport.start()
+                await asyncio.wait_for(retry_waiting.wait(), 1)
+                retry_waiting.clear()
+                permit.release()
+                await asyncio.wait_for(retry_waiting.wait(), 1)
+                permit.release()
+                await asyncio.wait_for(connected.wait(), 1)
+                self.assertEqual(connect.await_count, 3)
+                self.assertTrue(transport.is_connected())
+            finally:
+                websocket = transport.sdk.websocket
+                await transport.close()
+                hold.set()
+                await asyncio.sleep(0)
+            for callback in websocket._error_callbacks:
+                callback(OSError('late failure'))
+            await asyncio.sleep(0)
+            self.assertIsNone(websocket._reconnect_task)

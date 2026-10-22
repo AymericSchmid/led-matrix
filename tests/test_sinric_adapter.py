@@ -83,6 +83,19 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.adapter.callbacks.adjust_brightness(500), (True, 100))
         self.assertFalse(self.service.state()['power'])
 
+    async def test_zero_ack_invalidates_remembered_brightness_for_absolute_and_relative(self):
+        self.service.set_brightness(40)
+        await self.cycle()
+        self.transport.reports.clear()
+        self.assertTrue(await self.adapter.callbacks.brightness(0))
+        await self.cycle()
+        self.assertEqual(self.transport.reports, [('power', False), ('brightness', 40)])
+        self.assertTrue(await self.adapter.callbacks.power(True))
+        self.transport.reports.clear()
+        self.assertEqual(await self.adapter.callbacks.adjust_brightness(-100), (True, 0))
+        await self.cycle()
+        self.assertEqual(self.transport.reports, [('power', False), ('brightness', 40)])
+
     async def test_all_modes_and_rejections(self):
         for name in ('clock', 'circle', 'spotify', 'weather', 'moon', 'eyes', 'walker', 'kintsugi', 'shadow'):
             with patch.object(self.service, '_new_source', return_value=Mock()):

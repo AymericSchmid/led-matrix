@@ -1,4 +1,5 @@
 """Version-coupled Sinric 6.0.0 boundary. Importing requires no SDK."""
+import asyncio
 from dataclasses import dataclass
 from threading import Lock
 from typing import Awaitable, Callable
@@ -45,6 +46,7 @@ class SinricTransport:
         self.settings, self.callbacks = settings, callbacks
         self.sdk = self.device = None
         self._owns_sdk = False
+        self._closing = False
 
     async def start(self) -> None:
         if self._owns_sdk:
@@ -59,6 +61,7 @@ class SinricTransport:
         if not self._owner_lock.acquire(blocking=False):
             raise RuntimeError('Only one Sinric controller may run in this process.')
         self._owns_sdk = True
+        self._closing = False
         sdk = SinricPro.get_instance()
         if sdk.devices or sdk.is_initialized:
             self._owns_sdk = False
@@ -103,6 +106,14 @@ class SinricTransport:
         try:
             await sdk.begin(SinricProConfig(app_key=self.settings.app_key, app_secret=self.settings.app_secret,
                                            debug=False, local_control=False, mdns=False))
+            # 6.0.0 retries only once. Rearm its existing task after a failed
+            # connection unwinds; keep SDK backoff, socket and shutdown ownership.
+            websocket = sdk.websocket
+            loop = asyncio.get_running_loop()
+            def rearm():
+                if not self._closing and websocket.should_reconnect and not websocket.is_connected():
+                    websocket.schedule_reconnect()
+            websocket.on_error(lambda _error: loop.call_soon(rearm))
         except Exception:
             raise RuntimeError('Sinric startup failed. Check credentials and internet access, then restart.') from None
 
@@ -129,6 +140,7 @@ class SinricTransport:
     async def close(self) -> None:
         if not self._owns_sdk:
             return
+        self._closing = True
         try:
             if self.sdk is not None:
                 await self.sdk.stop()
