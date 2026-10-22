@@ -244,7 +244,19 @@ Edit `draw_clock()` in `clock_face.py` for the clock, or `draw_circle()` in `mai
 
 The clock face is cached, and a fresh frame is drawn only when the second or a display setting changes. Hand edges use intermediate LED brightness values for softer diagonals.
 
-Physical brightness is set at launch with `--brightness`. Plexiglass diffusion remains a future physical-design step.
+Physical brightness is set at launch with `--brightness`. The phone controller also saves power and brightness: off blanks the display, zero brightness turns off while remembering the last nonzero level, and selecting a scene turns it on. Plexiglass diffusion remains a future physical-design step.
+
+## Google Home
+
+Optional French Google Home control uses one Sinric Pro custom device for power,
+brightness and all nine scenes, sharing the phone controller's saved state.
+Install `requirements-sinric.txt` alongside the web requirements, then follow the
+[Sinric setup and acceptance checklist](docs/google-home-sinric.md). Cloud failures
+leave local controls available. French discovery and Pi acceptance checks remain
+pending until tested with the linked account and hardware.
+
+For state ownership, scene registration and SDK compatibility checks, see the
+[developer guide](docs/development.md).
 
 ## Hardware reference
 
