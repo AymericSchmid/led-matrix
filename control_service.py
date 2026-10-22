@@ -31,6 +31,7 @@ DATA_DIR = Path(__file__).resolve().parent / ".matrix"
 @dataclass(frozen=True)
 class ControlSettings:
     scene: str = "clock"
+    power: bool = True
     brightness: int = 80
     gpio_slowdown: int = 2
     theme: str = "light"
@@ -139,6 +140,7 @@ class ControlService:
             if self.output is not None:
                 self.output.close()
             raise
+        self.revision = 0
         self.lock = RLock()
         self.stopping = Event()
         self.wake = Event()
@@ -198,6 +200,7 @@ class ControlService:
             result.pop("spotify_client_id")
             result.update({
                 "caption": self.caption,
+                "revision": self.revision,
                 "hardware": self.hardware,
                 "scenes": SCENES,
                 "scene_metadata": scene_metadata(),
@@ -220,8 +223,7 @@ class ControlService:
                 return self.state()
             new_settings = replace(self.settings, scene=scene)
             self._replace_source(new_settings)
-            self.settings = new_settings
-            self.store.save(self.settings)
+            self._commit_settings(new_settings)
             return self.state()
 
     def set_scene_options(self, scene: str, changes: dict) -> dict:
@@ -278,8 +280,7 @@ class ControlService:
                 else:
                     self.source.args = updated.scene_args()
                     self.wake.set()
-            self.settings = updated
-            self.store.save(updated)
+            self._commit_settings(updated)
             return self.state()
 
     def _spotify_client_id(self) -> str:
@@ -308,8 +309,7 @@ class ControlService:
                 new_settings = replace(self.settings, spotify_client_id=chosen)
                 if self.settings.scene == "spotify":
                     self._replace_source(new_settings)
-                self.settings = new_settings
-                self.store.save(self.settings)
+                self._commit_settings(new_settings)
             verifier, challenge = pkce_pair()
             nonce = secrets.token_urlsafe(32)
             state = bridge_state(nonce, return_origin) if return_origin else nonce
@@ -381,20 +381,41 @@ class ControlService:
                 self._replace_source(self.settings)
             return self.spotify_status()
 
-    def set_brightness(self, brightness: int) -> dict:
-        if not 1 <= brightness <= 100:
-            raise ValueError("Brightness must be between 1 and 100.")
+    def _commit_settings(self, settings: ControlSettings) -> None:
+        # Caller owns the RLock. One transaction is one revision.
+        if settings != self.settings:
+            self.store.save(settings)
+            self.settings = settings
+            self.revision += 1
+            self.wake.set()
+
+    def set_power(self, power: bool) -> dict:
+        if type(power) is not bool:
+            raise ValueError("Power must be a boolean.")
         with self.lock:
-            self.settings = replace(self.settings, brightness=brightness)
-            if self.output is not None:
-                self.output.set_brightness(brightness)
-            self.store.save(self.settings)
+            self._commit_settings(replace(self.settings, power=power))
             return self.state()
 
+    def set_brightness(self, brightness: int) -> dict:
+        if type(brightness) is not int or not 0 <= brightness <= 100:
+            raise ValueError("Brightness must be an integer between 0 and 100.")
+        with self.lock:
+            updated = (replace(self.settings, brightness=brightness) if brightness
+                       else replace(self.settings, power=False))
+            if brightness and brightness != self.settings.brightness and self.output is not None:
+                self.output.set_brightness(brightness)
+            self._commit_settings(updated)
+            return {**self.state(), "applied_brightness": brightness}
+
+    def adjust_brightness(self, delta: int) -> dict:
+        if type(delta) is not int:
+            raise ValueError("Brightness adjustment must be an integer.")
+        with self.lock:
+            return self.set_brightness(max(0, min(100, self.settings.brightness + delta)))
+
     def set_gpio_slowdown(self, slowdown: int) -> dict:
-        if not 0 <= slowdown <= 10:
+        if type(slowdown) is not int or not 0 <= slowdown <= 10:
             raise ValueError("GPIO slowdown must be between 0 and 10.")
         with self.lock:
-            self.settings = replace(self.settings, gpio_slowdown=slowdown)
-            self.store.save(self.settings)
+            self._commit_settings(replace(self.settings, gpio_slowdown=slowdown))
             return self.state()

@@ -6,7 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from threading import Barrier
+import json
 from urllib.parse import parse_qs, urlsplit
 
 from PIL import Image
@@ -17,6 +21,89 @@ from weather_scene import weather_kind
 
 
 class ControlServiceTests(unittest.TestCase):
+    def service_fixture(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        service = ControlService(store=SettingsStore(root / 'state.db'), spotify_data_dir=root / 'spotify')
+        self.addCleanup(service.stop)
+        return service
+
+    def test_power_and_relative_brightness(self):
+        service = self.service_fixture()
+        service.set_brightness(40)
+        off = service.set_brightness(0)
+        self.assertEqual((off['power'], off['brightness'], off['applied_brightness']), (False, 40, 0))
+        self.assertEqual(service.set_brightness(0)['revision'], off['revision'])
+        self.assertEqual(service.adjust_brightness(10)['brightness'], 50)
+        self.assertFalse(service.state()['power'])
+        self.assertEqual(service.adjust_brightness(500)['brightness'], 100)
+        zero = service.adjust_brightness(-500)
+        self.assertEqual((zero['applied_brightness'], zero['brightness']), (0, 100))
+        self.assertFalse(zero['power'])
+        self.assertTrue(service.set_power(True)['power'])
+        self.assertNotIn('applied_brightness', service.state())
+        service.set_power(False)
+        service.set_scene_options('clock', {'theme': 'dark'})
+        self.assertFalse(service.state()['power'])
+
+    def test_strict_command_types(self):
+        service = self.service_fixture()
+        before = service.state()
+        with patch.object(service.store, 'save', wraps=service.store.save) as save:
+            for method in (service.set_brightness, service.adjust_brightness):
+                for value in (True, False, 1.5, '40', None):
+                    with self.subTest(method=method.__name__, value=value), self.assertRaises(ValueError):
+                        method(value)
+            for value in (-1, 101):
+                with self.assertRaises(ValueError):
+                    service.set_brightness(value)
+            for value in (0, 1, 'on', None, 1.0):
+                with self.assertRaises(ValueError):
+                    service.set_power(value)
+            self.assertEqual(service.state(), before)
+            save.assert_not_called()
+
+    def test_noop_does_not_save(self):
+        service = self.service_fixture()
+        before = service.state()
+        with patch.object(service.store, 'save', wraps=service.store.save) as save:
+            service.set_power(True)
+            service.set_brightness(80)
+            service.adjust_brightness(0)
+            service.select_scene('clock')
+            service.set_scene_options('clock', {'theme': 'light'})
+            service.set_gpio_slowdown(2)
+            save.assert_not_called()
+        self.assertEqual(service.state(), before)
+
+    def test_legacy_and_power_round_trip(self):
+        service = self.service_fixture()
+        import sqlite3
+        with closing(sqlite3.connect(service.store.path)) as db:
+            db.execute("UPDATE settings SET value=?", (json.dumps({'eyes_movement_rate': 45, 'scene': 'moon'}),))
+            db.commit()
+        legacy = service.store.load()
+        self.assertTrue(legacy.power)
+        self.assertEqual((legacy.eyes_movement_frequency, legacy.eyes_movement_speed), (45, 45))
+        service.select_scene('moon')
+        service.set_brightness(40)
+        service.set_power(False)
+        saved = service.store.load()
+        self.assertEqual((saved.power, saved.brightness, saved.scene), (False, 40, 'moon'))
+
+    def test_relative_changes_are_atomic(self):
+        service = self.service_fixture()
+        service.set_brightness(40)
+        barrier = Barrier(2)
+        def adjust():
+            barrier.wait(timeout=2)
+            return service.adjust_brightness(10)
+        with ThreadPoolExecutor(2) as pool:
+            results = list(pool.map(lambda _: adjust(), range(2)))
+        self.assertEqual(service.state()['brightness'], 60)
+        self.assertEqual(len({r['revision'] for r in results}), 2)
+
     def setUp(self):
         active = patch("control_service.configured_env_client_id", return_value="")
         active.start()
